@@ -88,6 +88,9 @@ def svg(lines: list, width: int, theme: str = "dark", font_size: int = 14) -> st
                     k = view.VBLOCKS.index(ch)
                     out.append(f'<rect x="{cx:.2f}" y="{top + lh * (1 - k / 8):.2f}" width="{cw + 0.3:.2f}" '
                                f'height="{lh * k / 8 + 0.3:.2f}" fill="{color}"/>')
+                elif ch == view.HBAR_HALF:
+                    out.append(f'<rect x="{cx:.2f}" y="{top + lh / 2:.2f}" width="{cw / 2 + 0.3:.2f}" '
+                               f'height="{lh / 2 + 0.3:.2f}" fill="{color}"/>')
                 elif ch in view.EIGHTHS[1:]:
                     k = view.EIGHTHS.index(ch)
                     out.append(f'<rect x="{cx:.2f}" y="{top:.2f}" width="{cw * k / 8 + 0.3:.2f}" '

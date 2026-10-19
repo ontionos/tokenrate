@@ -158,6 +158,30 @@ done
 bars() { "$SPEND" --snapshot --format plain --width 120 --height "$1" --today "$TODAY" |
   sed -n '/COST PER DAY/,/^ *$/p' | grep -c '[▁▂▃▄▅▆▇█]'; }
 [ "$(bars 70)" -gt "$(bars 40)" ] || fail "a taller window draws a taller chart ($(bars 70) vs $(bars 40) rows)"
+# Bars never touch: list bars are half-height (no full or left-eighth blocks outside the daily
+# chart), the daily chart keeps a gap between bars even when 90 days must share 2-cell columns,
+# and a sparkline is one bar per period with a space between, an empty period a dim baseline.
+for v in projects models; do
+  "$SPEND" --snapshot --format plain --width 120 --height 40 --view "$v" --days 90 --today "$TODAY" |
+    grep -q '[█▏▎▍▌▋▊▉]' && fail "$v view draws full-height list bars that touch the next row"
+done
+"$SPEND" --snapshot --format plain --width 120 --height 48 --days 90 --today "$TODAY" > "$TMP/ov90.txt"
+sed -n '/COST PER DAY/,/└/p' "$TMP/ov90.txt" | grep -q '[▁▂▃▄▅▆▇█][▁▂▃▄▅▆▇█]' &&
+  fail "90-day chart bars touch each other"
+grep -q "each bar = 2 days" "$TMP/ov90.txt" || fail "grouped chart says how many days a bar holds"
+"$SPEND" --snapshot --format plain --width 160 --height 40 --view projects --today "$TODAY" > "$TMP/proj.txt"
+grep -q "per day, each row to its own peak" "$TMP/proj.txt" || fail "the sparkline column is titled"
+grep -q "20 Sep .* 19 Oct" "$TMP/proj.txt" || fail "the sparkline column shows its first and last day"
+python3 - "$TMP/proj.txt" <<'PYC' || fail "sparklines: a space between bars, a baseline on empty days"
+import re, sys
+rows = [l.rstrip() for l in open(sys.argv[1]) if re.search(r"%\s+\$\d", l)]
+assert rows, "no project rows"
+for l in rows:
+    spark = l.split("  ")[-1].strip()
+    assert re.fullmatch(r"([▁▂▃▄▅▆] )*[▁▂▃▄▅▆]", spark), spark
+    assert len(spark.split()) == 30, (len(spark.split()), spark)
+assert any("▁" in l.split("  ")[-1] for l in rows), "empty days show the baseline"
+PYC
 "$SPEND" --snapshot --format plain --width 120 --height 40 --today "$TODAY" | grep -q "API-equivalent estimate" ||
   fail "header labels the dollars as an estimate"
 "$SPEND" --snapshot --format plain --width 40 --height 10 | grep -q "too small" || fail "tiny terminal message"

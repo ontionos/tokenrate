@@ -18,7 +18,12 @@ VIEWS = ("Overview", "Models", "Projects", "Days")
 RANGES = (7, 30, 90)
 EIGHTHS = " ▏▎▍▌▋▊▉█"
 VBLOCKS = " ▁▂▃▄▅▆▇█"
-SPARK = "▁▂▃▄▅▆▇█"
+# Bars never touch their neighbours: a horizontal bar is the lower half of its row (▄, with ▖ for a
+# half step), so stacked rows keep a gap; a sparkline stops at ▆, so it keeps clear of the row above,
+# and puts a space between periods. An empty period is a dim baseline, so a quiet day still shows.
+HBAR, HBAR_HALF = "▄", "▖"
+SPARK = "▂▃▄▅▆"  # the smallest non-zero bar stands above the empty baseline
+SPARK_EMPTY = "▁"
 MODEL_STYLES = tuple(f"m{i}" for i in range(8))
 TOKEN_TYPES = (("cache_read", "cache read", "t0"), ("cache_write", "cache write", "t1"),
                ("input", "input", "t2"), ("output", "output", "t3"))
@@ -132,24 +137,68 @@ def hcat(left: list, right: list, lw: int, rw: int, gap: int = 3) -> list:
 
 
 def hbar(fraction: float, width: int, style: str) -> list:
-    """Eighth-block horizontal bar on a dotted track."""
+    """Half-height horizontal bar, in half-cell steps, on a dotted track; any non-zero value shows."""
     fraction = max(0.0, min(1.0, float(fraction or 0)))
-    eighths = round(fraction * width * 8)
-    if fraction > 0 and eighths == 0:
-        eighths = 1
-    full, part = divmod(eighths, 8)
-    bar = "█" * full + (EIGHTHS[part] if part else "")
+    halves = round(fraction * width * 2)
+    if fraction > 0 and halves == 0:
+        halves = 1
+    full, half = divmod(halves, 2)
+    bar = HBAR * full + (HBAR_HALF if half else "")
     return [(bar, style), ("·" * (width - len(bar)), "track")]
 
 
-def spark(values: list, width: int | None = None) -> str:
+def spark_groups(values: list, width: int) -> tuple[list, int]:
+    """(period sums, days per period) so that one bar plus one space per period fits in `width`.
+    Periods are counted back from the last day, so the newest bar is always complete."""
     vals = list(values or [])
-    if width and len(vals) > width:
-        vals = bucket(vals, width)
-    peak = max(vals, default=0)
-    if peak <= 0:
-        return " " * len(vals)
-    return "".join(" " if v <= 0 else SPARK[min(7, int(v / peak * 7.999))] for v in vals)
+    slots = (width + 1) // 2
+    if not vals or slots <= 0:
+        return [], 1
+    per = max(1, -(-len(vals) // slots))
+    groups, end = [], len(vals)
+    while end > 0:
+        groups.insert(0, sum(vals[max(0, end - per):end]))
+        end -= per
+    return groups, per
+
+
+def spark(values: list, width: int, style: str, peak: float | None = None) -> list:
+    """Sparkline segments: one bar per period with a space between, a dim baseline where it is empty."""
+    groups, _per = spark_groups(values, width)
+    top = peak if peak else max(groups, default=0)
+    out = []
+    for i, v in enumerate(groups):
+        if i:
+            out.append((" ", ""))
+        if v > 0 and top > 0:
+            out.append((SPARK[min(len(SPARK) - 1, int(v / top * (len(SPARK) - 0.001)))], style))
+        else:
+            out.append((SPARK_EMPTY, "track"))
+    return out
+
+
+def spark_width(n_days: int, width: int) -> int:
+    """Cells a sparkline of n_days actually takes inside `width`."""
+    return max(0, 2 * len(spark_groups([0] * n_days, width)[0]) - 1)
+
+
+def spark_title(n_days: int, width: int) -> str:
+    per = spark_groups([0] * n_days, width)[1]
+    return ("per day" if per == 1 else f"per {per} days") + ", each row to its own peak"
+
+
+def spark_axis(summary: dict, width: int) -> str:
+    """The first and last day under a sparkline column of `width` cells."""
+    days = summary["daily"]
+    groups, per = spark_groups([0] * len(days), width)
+    used = 2 * len(groups) - 1
+    if not groups:
+        return ""
+    first = days[max(0, len(days) - len(groups) * per)]["date"]
+    a, b = nice_day(first, False), nice_day(days[-1]["date"], False)
+    if used < len(a) + len(b) + 1:
+        return b.rjust(used)
+    return a + " " * (used - len(a) - len(b)) + b
 
 
 def bucket(values: list, n: int) -> list:
@@ -244,18 +293,19 @@ def daily_chart(summary: dict, width: int, height: int = 8) -> list:
     avail = max(10, width - axis_w)
     n = len(days)
     per = 1
-    if n <= avail:
-        col = max(1, min(5, avail // max(1, n)))
+    if 2 * n <= avail:
+        col = max(2, min(5, avail // max(1, n)))
         cols = [(d["cost"], styles.get(d["top_model"], "bar"), d) for d in days]
     else:
-        col = 1
-        per = -(-n // avail)
+        # One cell of bar and one of gap per column, so neighbouring bars never touch.
+        col = 2
+        per = -(-n // max(1, avail // 2))
         cols = []
         for i in range(0, n, per):
             group = days[i:i + per]
             top = max(group, key=lambda d: d["cost"])
             cols.append((sum(d["cost"] for d in group), styles.get(top["top_model"], "bar"), group[0]))
-    bar_w = col - 1 if col >= 2 else 1
+    bar_w = col - 1
     peak = max((c[0] for c in cols), default=0)
     lines = []
     if peak <= 0:
@@ -286,10 +336,13 @@ def daily_chart(summary: dict, width: int, height: int = 8) -> list:
         row = [(axis, "axis")]
         for value, style, _d in cols:
             eighths = round(value / peak * height * 8) if value > 0 else 0
-            if value > 0 and eighths == 0:
-                eighths = 1
+            if value > 0 and eighths < 2:
+                eighths = 2  # a small day stands above the baseline an empty day gets
             lvl = max(0, min(8, eighths - level_floor))
-            row.append((VBLOCKS[lvl] * bar_w, style))
+            if value <= 0 and r == height - 1:
+                row.append((SPARK_EMPTY * bar_w, "track"))
+            else:
+                row.append((VBLOCKS[lvl] * bar_w, style))
             if col > bar_w:
                 row.append((" " * (col - bar_w), ""))
         lines.append(row)
@@ -299,7 +352,7 @@ def daily_chart(summary: dict, width: int, height: int = 8) -> list:
     wd_row, date_row = [(" " * axis_w, "")], [" "] * (len(cols) * col)
     for i, (_v, _s, d) in enumerate(cols):
         day = dt.date.fromisoformat(d["date"])
-        if col >= 2 and n <= avail:
+        if per == 1:
             wd_row.append((day.strftime("%a")[0].ljust(col)[:col], "weekend" if day.weekday() >= 5 else "axis"))
         if day.weekday() == 0 or i == 0:
             text = day.strftime("%d %b") if col >= 3 or i == 0 else day.strftime("%d")
@@ -311,7 +364,7 @@ def daily_chart(summary: dict, width: int, height: int = 8) -> list:
     if len(wd_row) > 1:
         lines.append(wd_row)
     dates = [(" " * axis_w, ""), ("".join(date_row).rstrip(), "axis")]
-    if n > avail:
+    if per > 1:
         dates.append((f"   each bar = {per} days", "dim"))
     lines.append(dates)
     return lines
@@ -355,14 +408,14 @@ def models_block(summary: dict, width: int, limit: int = 6) -> list:
     name_w = max(8, min(16, max(len(m["name"]) for m in shown) + 1))
     bar_w = max(6, min(48, width - name_w - 26))
     for m in shown:
-        lines.append([("● ", styles[m["name"]]), (clip(m["name"], name_w), "bold")] +
+        lines.append([("● ", styles[m["name"]]), (clip(m["name"], name_w - 1) + " ", "bold")] +
                      hbar(m["share"], bar_w, styles[m["name"]]) +
                      [(f" {pct(m['share']):>5}", "bold"), (f" {usd(m['cost']):>8}", "money"),
                       (f" {tok(m['tokens']):>6}", "dim")])
     if rest:
         cost = sum(m["cost"] for m in rest)
         share = cost / summary["cost"] if summary["cost"] else 0
-        lines.append([("● ", "dim"), (clip(f"{len(rest)} more", name_w), "dim")] + hbar(share, bar_w, "dim") +
+        lines.append([("● ", "dim"), (clip(f"{len(rest)} more", name_w - 1) + " ", "dim")] + hbar(share, bar_w, "dim") +
                      [(f" {pct(share):>5}", "dim"), (f" {usd(cost):>8}", "dim"),
                       (f" {tok(sum(m['tokens'] for m in rest)):>6}", "dim")])
     return lines
@@ -398,7 +451,7 @@ def projects_block(summary: dict, width: int, limit: int = 8) -> list:
     top = projects[0]["cost"] or 1
     for p in projects[:limit]:
         tag = "codex" in p["agents"] and "claude" not in p["agents"]
-        lines.append([(clip(p["name"], name_w), "bold")] + hbar(p["cost"] / top, bar_w, "proj_codex" if tag else "proj") +
+        lines.append([(clip(p["name"], name_w - 1) + " ", "bold")] + hbar(p["cost"] / top, bar_w, "proj_codex" if tag else "proj") +
                      [(f" {pct(p['share']):>5}", "dim"), (f" {usd(p['cost']):>8}", "money")])
     if len(projects) > limit:
         lines.append([(f"… {len(projects) - limit} more (view 3)", "dim")])
@@ -522,17 +575,22 @@ def models_view(summary: dict, width: int) -> list:
     if not summary["models"]:
         return lines
     name_w = max(10, min(18, max(len(m["name"]) for m in summary["models"]) + 1))
-    spark_w = max(0, width - name_w - 44)
+    n = len(summary["daily"])
+    spark_w = min(max(0, width - name_w - 44), max(0, 2 * n - 1))
+    if spark_width(n, spark_w) < 7:
+        spark_w = 0
     head = (clip("model", name_w) + f"{'cache rd':>8}{'cache wr':>9}{'input':>8}{'output':>8}{'est.':>9}  " +
-            ("per day" if spark_w >= 7 else ""))
+            (spark_title(n, spark_w) if spark_w else ""))
     lines.append([(head, "dim")])
     for m in summary["models"]:
         row = [(clip(m["name"], name_w), styles[m["name"]]),
                (f"{tok(m['cache_read']):>8}{tok(m['cache_write']):>9}{tok(m['input']):>8}{tok(m['output']):>8}", ""),
                (f"{usd(m['cost']):>9}", "money"), ("  ", "")]
-        if spark_w >= 7:
-            row.append((spark(m["daily"], spark_w), styles[m["name"]]))
+        if spark_w:
+            row += spark(m["daily"], spark_w, styles[m["name"]])
         lines.append(row)
+    if spark_w:
+        lines.append([(" " * (name_w + 44), ""), (spark_axis(summary, spark_w), "axis")])
     return lines
 
 
@@ -542,17 +600,25 @@ def projects_view(summary: dict, width: int) -> list:
     if not projects:
         return lines + [[("  none in this window", "dim")]]
     name_w = max(12, min(28, max(len(p["name"]) for p in projects) + 1))
-    spark_w = min(len(summary["daily"]), max(0, (width - name_w - 30) // 2))
-    bar_w = max(6, width - name_w - 30 - spark_w)
+    n = len(summary["daily"])
+    room = max(0, width - name_w - 24)  # what the bar and the sparkline share
+    spark_w = spark_width(n, min(2 * n - 1, room * 3 // 5))
+    if spark_w < 7:
+        spark_w = 0
+    bar_w = max(6, room - spark_w - (2 if spark_w else 0))
     top = projects[0]["cost"] or 1
+    head = clip("project", name_w) + " " * bar_w + f"{'share':>6}{'est.':>9}{'tokens':>7}"
+    lines.append([(head + ("  " + spark_title(n, spark_w) if spark_w else ""), "dim")])
     for p in projects:
         tag = "codex" in p["agents"] and "claude" not in p["agents"]
         style = "proj_codex" if tag else "proj"
-        row = [(clip(p["name"], name_w), "bold")] + hbar(p["cost"] / top, bar_w, style) + \
+        row = [(clip(p["name"], name_w - 1) + " ", "bold")] + hbar(p["cost"] / top, bar_w, style) + \
               [(f" {pct(p['share']):>5}", "dim"), (f" {usd(p['cost']):>8}", "money"), (f" {tok(p['tokens']):>6}", "dim")]
-        if spark_w >= 7:
-            row += [("  ", ""), (spark(p["daily"], spark_w), style)]
+        if spark_w:
+            row += [("  ", "")] + spark(p["daily"], spark_w, style)
         lines.append(row)
+    if spark_w:
+        lines.append([(" " * (name_w + bar_w + 24), ""), (spark_axis(summary, spark_w), "axis")])
     lines += [[], [("Claude Code is split by working folder per day; Codex by session folder on its last day.", "dim")]]
     return lines
 

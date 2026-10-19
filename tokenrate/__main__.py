@@ -11,7 +11,7 @@ import sys
 from . import __version__, data, settings, snapshot, view
 
 HELP = """\
-tokenRate - token and cost dashboard over the last 7, 30 or 90 days, from ccusage.
+tokenrate - token and cost dashboard over the last 7, 30 or 90 days, from ccusage.
 
   tokenrate                          open the dashboard in this terminal
                                      (q quits, r counts again, ? help; a mouse click works on
@@ -21,8 +21,8 @@ tokenRate - token and cost dashboard over the last 7, 30 or 90 days, from ccusag
                                      print one frame without a terminal
   tokenrate --json [--days N]        print the summary the views are drawn from
   tokenrate --install-ccusage        install the pinned ccusage into the data folder (needs network once)
-  tokenrate --paths                  print every folder and file tokenRate uses
-  tokenrate --purge                  delete tokenRate's cache and its ccusage install (not your config)
+  tokenrate --paths                  print every folder and file tokenrate uses
+  tokenrate --purge                  delete tokenrate's cache and its ccusage install (not your config)
   tokenrate tab ensure|check ...     keep the dashboard open as tab 2 of a Herdr workspace (tab --help)
 
 Dollars are the public API price of the tokens: an estimate, not a bill.
@@ -109,7 +109,7 @@ def installed_ccusage_version() -> str | None:
 
 
 def install_ccusage() -> int:
-    """npm install --ignore-scripts of the pinned version into tokenRate's own data folder; nothing global."""
+    """npm install --ignore-scripts of the pinned version into tokenrate's own data folder; nothing global."""
     import shutil
     import subprocess
     target = data.ccusage_dir()

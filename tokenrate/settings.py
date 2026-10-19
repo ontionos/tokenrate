@@ -1,4 +1,4 @@
-"""Where tokenRate keeps its files, and its optional settings.
+"""Where tokenrate keeps its files, and its optional settings.
 
 Files (nothing else is ever written):
   $XDG_CACHE_HOME/tokenrate/   (default ~/.cache/tokenrate)        ccusage.json, the cached counts, and a

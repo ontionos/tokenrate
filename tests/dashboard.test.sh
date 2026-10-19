@@ -220,7 +220,7 @@ on = buf.find(b"\x1b[?1000h")
 assert on >= 0 and b"\x1b[?1006h" in buf, "button presses requested in SGR encoding"
 assert b"COST PER DAY" in buf
 
-# Header row 1 at 120 columns: " ◆ tokenRate  1 Overview   2 Models   3 Projects   4 Days ... 7d   30d   90d".
+# Header row 1 at 120 columns: " ◆ tokenrate  1 Overview   2 Models   3 Projects   4 Days ... 7d   30d   90d".
 mark = len(buf); click(30, 1)                       # "2 Models"
 assert b"PER MODEL" in since(mark), "clicking the Models tab opens it"
 mark = len(buf); click(42, 1)                       # "3 Projects"

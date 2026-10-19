@@ -1,21 +1,21 @@
 """Keep the dashboard open as the second tab of a Herdr workspace: `tokenrate tab`.
 
-  ensure   make tab 2 of the workspace a tab labelled "tokenRate" (or --label) holding a live, drawing dashboard
+  ensure   make tab 2 of the workspace a tab labelled "tokenrate" (or --label) holding a live, drawing dashboard
   check    verify exactly that, without changing anything
 
 Each prints one line. Exit 0 means the tab is right (or, for ensure, that there is nothing to do here:
 no Herdr, no running server, or no such workspace); exit 1 means a problem the line names, 2 a usage
 error. `ensure --quiet` prints nothing unless there is a problem.
 The workspace is --workspace LABEL, else the `tab_workspace` setting, else the workspace of the Herdr
-pane this runs in. The tab label is --label LABEL, else the `tab_label` setting, else tokenRate.
+pane this runs in. The tab label is --label LABEL, else the `tab_label` setting, else tokenrate.
 
 Only Herdr's public interfaces are used: the CLI for everything it offers, and its socket API
 (`tab.move`, socket path from `herdr status server`) for the one thing it does not - moving the
-tokenRate tab itself to position 2. ensure never closes, moves, renames or focuses a tab or pane that
+tokenrate tab itself to position 2. ensure never closes, moves, renames or focuses a tab or pane that
 is not the dashboard's own: it opens the dashboard with --no-focus, closes only dashboard panes that are
-dead or not drawing, moves only the tokenRate tab, and gives focus back if Herdr moved it anyway.
+dead or not drawing, moves only the tokenrate tab, and gives focus back if Herdr moved it anyway.
 A pane is the dashboard's when its foreground process runs the tokenrate dashboard or Herdr labels it
-"tokenRate" or with the tab label. A new dashboard pane gets every TOKENRATE_* setting of the caller's environment, so a
+"tokenrate" or with the tab label. A new dashboard pane gets every TOKENRATE_* setting of the caller's environment, so a
 setting given to `tokenrate tab ensure` also reaches the dashboard it opens.
 
 Environment:
@@ -33,10 +33,10 @@ import subprocess
 import sys
 import time
 
-LABEL = "tokenRate"  # the tab label; --label or the tab_label setting changes it
-PANE_TITLE = "tokenRate"  # the title herdr-plugin.toml gives the dashboard pane
+LABEL = "tokenrate"  # the tab label; --label or the tab_label setting changes it
+PANE_TITLE = "tokenrate"  # the title herdr-plugin.toml gives the dashboard pane
 PLUGIN, ENTRYPOINT = "tokenrate", "dashboard"
-HEADER = "◆"  # the dashboard's first line starts with it, followed by "tokenRate" or the 7d/30d/90d pills
+HEADER = "◆"  # the dashboard's first line starts with it, followed by "tokenrate" or the 7d/30d/90d pills
 FORWARD_SKIP = ("TOKENRATE_HERDR", "TOKENRATE_TAB_WAIT", "TOKENRATE_TAB_WORKSPACE", "TOKENRATE_TAB_LABEL")
 POSITION = 1  # zero-based: the second tab
 
@@ -167,7 +167,7 @@ def renders(h: Herdr, pane_id: str) -> bool:
     if p.returncode != 0:
         return False
     first = next((line.strip() for line in p.stdout.splitlines() if line.strip()), "")
-    return first.startswith(HEADER) and ("tokenRate" in first or "90d" in first)
+    return first.startswith(HEADER) and ("tokenrate" in first or "90d" in first)
 
 
 def is_ours(h: Herdr, pane: dict) -> bool:
@@ -239,7 +239,7 @@ def ensure(h: Herdr, label: str) -> str:
     ws = find_workspace(h, label)
     plugins = h.call("plugin", "list", "--plugin", PLUGIN, "--json").get("plugins") or []
     if not any(p.get("plugin_id") == PLUGIN and p.get("enabled", True) for p in plugins):
-        raise Problem(f"herdr plugin {PLUGIN} is not installed and enabled (see the tokenRate README, Install)")
+        raise Problem(f"herdr plugin {PLUGIN} is not installed and enabled (see the tokenrate README, Install)")
     focus = focused_tab(h)
     actions, pane_id = [], None
 
@@ -267,7 +267,7 @@ def ensure(h: Herdr, label: str) -> str:
             actions.append("restarted the dashboard")
         for p in broken:
             h.call("pane", "close", p)
-    # A duplicate tokenRate tab is closed only when every pane in it is the dashboard's own.
+    # A duplicate tokenrate tab is closed only when every pane in it is the dashboard's own.
     for t in ours:
         if t["tab_id"] != keeper["tab_id"] and all(is_ours(h, p) for p in by_tab[t["tab_id"]]):
             h.call("tab", "close", t["tab_id"])

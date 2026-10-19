@@ -172,7 +172,7 @@ def model_styles(summary: dict) -> dict:
 
 
 def header(summary: dict, view: int, rng: int, width: int, status: str) -> list:
-    tabs = [("◆ tokenRate ", "title")]
+    tabs = [("◆ tokenrate ", "title")]
     for i, name in enumerate(VIEWS):
         tabs += [Click(f" {i + 1} {name} ", "tab_on" if i == view else "tab", ("view", i)), (" ", "")]
     pills = []
@@ -623,5 +623,5 @@ def screen(summary: dict, view: int, width: int, height: int, status: str, error
 
 
 def loading_screen(width: int, message: str) -> list:
-    return [[("◆ tokenRate", "title")], [], [(message, "bold")],
+    return [[("◆ tokenrate", "title")], [], [(message, "bold")],
             [("ccusage reads the local Claude Code and Codex logs once; it takes a few seconds.", "dim")]]

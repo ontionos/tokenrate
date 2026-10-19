@@ -27,7 +27,7 @@ cat > "$TMP/fake_herdr.py" <<'PY'
 import json, os, sys
 
 STATE = os.environ["FAKE_STATE"]
-DASH = " ◆ tokenRate  1 Overview   2 Models   3 Projects   4 Days      7d   30d   90d\n 1.0B tokens"
+DASH = " ◆ tokenrate  1 Overview   2 Models   3 Projects   4 Days      7d   30d   90d\n 1.0B tokens"
 
 
 def load():
@@ -142,7 +142,7 @@ def main(args):
             s["tabs"].append({"tab_id": tab_id, "ws": opt(args, "--workspace"), "label": str(s["next"])})
         else:
             tab_id = next(p["tab_id"] for p in s["panes"] if p["pane_id"] == opt(args, "--target-pane"))
-        pane = {"pane_id": new_id(s, "p"), "tab_id": tab_id, "label": "tokenRate", "dash": True, "screen": screen}
+        pane = {"pane_id": new_id(s, "p"), "tab_id": tab_id, "label": "tokenrate", "dash": True, "screen": screen}
         s["panes"].append(pane)
         save(s)
         return out({"plugin_pane": {"pane": pane_view(s, pane)}})
@@ -179,7 +179,7 @@ chmod +x "$TMP/herdr"
 reset_state() {
   python3 - "$STATE_JSON" "$SOCK" <<'PY'
 import json, sys
-dash = " ◆ tokenRate  1 Overview   2 Models   3 Projects   4 Days      7d   30d   90d"
+dash = " ◆ tokenrate  1 Overview   2 Models   3 Projects   4 Days      7d   30d   90d"
 json.dump({"socket": sys.argv[2], "plugin": True, "next": 10, "focused_tab": "w1:t2",
            "workspaces": [{"id": "w1", "label": "work"}, {"id": "w2", "label": "other"}],
            "tabs": [{"tab_id": "w1:t1", "ws": "w1", "label": "main"}, {"tab_id": "w1:t2", "ws": "w1", "label": "notes"},
@@ -192,7 +192,7 @@ PY
 query() { python3 -c "import json,sys; s=json.load(open('$STATE_JSON')); $1"; }
 order() { query 'print(" ".join(t["label"] for t in s["tabs"] if t["ws"] == "w1"))'; }
 focus() { query 'print(s["focused_tab"])'; }
-dash_panes() { query 'print(" ".join(p["pane_id"] + ("+" if p.get("dash") else "-") for p in s["panes"] if p["tab_id"] in [t["tab_id"] for t in s["tabs"] if t["label"] == "tokenRate"]))'; }
+dash_panes() { query 'print(" ".join(p["pane_id"] + ("+" if p.get("dash") else "-") for p in s["panes"] if p["tab_id"] in [t["tab_id"] for t in s["tabs"] if t["label"] == "tokenrate"]))'; }
 
 reset_state
 python3 "$TMP/fake_herdr.py" serve >/dev/null 2>&1 &
@@ -203,14 +203,14 @@ for _ in $(seq 50); do [ -S "$SOCK" ] && break; sleep 0.1; done
 
 # --- check on a workspace without the tab, then ensure opens it as tab 2 ---
 out=$("$TAB" check) && fail "check fails while the tab is missing"
-[ "$out" = "tokenrate tab: workspace work has no tokenRate tab" ] || fail "check names the missing tab (got: $out)"
+[ "$out" = "tokenrate tab: workspace work has no tokenrate tab" ] || fail "check names the missing tab (got: $out)"
 out=$("$TAB" ensure) || fail "ensure succeeds (got: $out)"
-case "$out" in *"ok: tokenRate is tab 2 of workspace work"*"opened the tokenRate tab"*) ;; *) fail "ensure reports what it did (got: $out)" ;; esac
-[ "$(order)" = "main tokenRate notes" ] || fail "tokenRate is tab 2, the user's tabs keep their order (got: $(order))"
+case "$out" in *"ok: tokenrate is tab 2 of workspace work"*"opened the tokenrate tab"*) ;; *) fail "ensure reports what it did (got: $out)" ;; esac
+[ "$(order)" = "main tokenrate notes" ] || fail "tokenrate is tab 2, the user's tabs keep their order (got: $(order))"
 [ "$(focus)" = "w1:t2" ] || fail "focus stays on the user's tab"
 grep -q '^api tab.move$' "$CALLS" || fail "the new tab is moved through the socket API"
 query 'assert [t["label"] for t in s["tabs"] if t["ws"] == "w2"] == ["1"]' || fail "another workspace is untouched"
-"$TAB" check | grep -q '^tokenrate tab: ok: tokenRate is tab 2' || fail "check passes after ensure"
+"$TAB" check | grep -q '^tokenrate tab: ok: tokenrate is tab 2' || fail "check passes after ensure"
 pass "ensure opens the dashboard as tab 2 without moving focus or the user's tabs"
 
 # --- ensure on a correct tab changes nothing -------------------------------
@@ -224,56 +224,56 @@ if grep -Eq '^(tab (close|rename|focus)|pane close|plugin pane open|api tab.move
 fi
 pass "ensure is idempotent and quiet"
 
-# --- the tab drifted to the end: only the tokenRate tab moves back -------------
+# --- the tab drifted to the end: only the tokenrate tab moves back -------------
 query 's["tabs"].append(s["tabs"].pop(1)); json.dump(s, open("'"$STATE_JSON"'", "w"))'
-[ "$(order)" = "main notes tokenRate" ] || fail "setup: tokenRate moved last"
-"$TAB" check >/dev/null && fail "check fails when tokenRate is not tab 2"
+[ "$(order)" = "main notes tokenrate" ] || fail "setup: tokenrate moved last"
+"$TAB" check >/dev/null && fail "check fails when tokenrate is not tab 2"
 "$TAB" ensure >/dev/null || fail "ensure repairs the position"
-[ "$(order)" = "main tokenRate notes" ] || fail "tokenRate is back at tab 2 (got: $(order))"
-pass "a misplaced tokenRate tab is moved back"
+[ "$(order)" = "main tokenrate notes" ] || fail "tokenrate is back at tab 2 (got: $(order))"
+pass "a misplaced tokenrate tab is moved back"
 
 # --- a quit dashboard beside the user's own pane is reopened, their pane kept
 query '
-sp = next(t["tab_id"] for t in s["tabs"] if t["label"] == "tokenRate")
+sp = next(t["tab_id"] for t in s["tabs"] if t["label"] == "tokenrate")
 for p in s["panes"]:
     if p["tab_id"] == sp: p.update(dash=False, screen="$ ")
 s["panes"].append({"pane_id": "w1:p99", "tab_id": sp})
 json.dump(s, open("'"$STATE_JSON"'", "w"))'
 out=$("$TAB" check) && fail "check fails when the dashboard is not running"
-[ "$out" = "tokenrate tab: the tokenRate tab has no running dashboard" ] || fail "check names the dead dashboard (got: $out)"
+[ "$out" = "tokenrate tab: the tokenrate tab has no running dashboard" ] || fail "check names the dead dashboard (got: $out)"
 "$TAB" ensure | grep -q 'restarted the dashboard' || fail "ensure restarts the dashboard"
 panes=$(dash_panes)
-case " $panes " in *" w1:p99- "*) ;; *) fail "the user's pane in the tokenRate tab is kept (got: $panes)" ;; esac
+case " $panes " in *" w1:p99- "*) ;; *) fail "the user's pane in the tokenrate tab is kept (got: $panes)" ;; esac
 [ "$(printf '%s\n' "$panes" | tr ' ' '\n' | grep -c '+$')" = 1 ] || fail "exactly one live dashboard (got: $panes)"
 [ "$(printf '%s\n' "$panes" | tr ' ' '\n' | wc -l | tr -d ' ')" = 2 ] || fail "the dead dashboard pane was closed (got: $panes)"
-[ "$(order)" = "main tokenRate notes" ] || fail "tab order unchanged by the repair"
+[ "$(order)" = "main tokenrate notes" ] || fail "tab order unchanged by the repair"
 pass "a dead dashboard is replaced; the user's pane stays"
 
 # --- the dashboard quit alone, so its tab closed: ensure recreates it --------
 reset_state
 "$TAB" ensure >/dev/null || fail "first ensure"
 query '
-sp = next(t["tab_id"] for t in s["tabs"] if t["label"] == "tokenRate")
+sp = next(t["tab_id"] for t in s["tabs"] if t["label"] == "tokenrate")
 s["tabs"] = [t for t in s["tabs"] if t["tab_id"] != sp]; s["panes"] = [p for p in s["panes"] if p["tab_id"] != sp]
 json.dump(s, open("'"$STATE_JSON"'", "w"))'
 "$TAB" ensure >/dev/null || fail "ensure after the tab closed"
-[ "$(order)" = "main tokenRate notes" ] || fail "tokenRate recreated at tab 2 (got: $(order))"
-pass "a closed tokenRate tab is recreated"
+[ "$(order)" = "main tokenrate notes" ] || fail "tokenrate recreated at tab 2 (got: $(order))"
+pass "a closed tokenrate tab is recreated"
 
 # --- duplicates: an all-dashboard duplicate closes, a mixed one is left alone
 reset_state
 "$TAB" ensure >/dev/null || fail "first ensure"
 query '
 for n, extra in ((50, False), (60, True)):
-    s["tabs"].append({"tab_id": f"w1:t{n}", "ws": "w1", "label": "tokenRate"})
-    s["panes"].append({"pane_id": f"w1:p{n}", "tab_id": f"w1:t{n}", "label": "tokenRate", "dash": True, "screen": "x"})
+    s["tabs"].append({"tab_id": f"w1:t{n}", "ws": "w1", "label": "tokenrate"})
+    s["panes"].append({"pane_id": f"w1:p{n}", "tab_id": f"w1:t{n}", "label": "tokenrate", "dash": True, "screen": "x"})
     if extra: s["panes"].append({"pane_id": f"w1:p{n + 1}", "tab_id": f"w1:t{n}"})
 json.dump(s, open("'"$STATE_JSON"'", "w"))'
-"$TAB" ensure | grep -q 'closed a duplicate tokenRate tab' || fail "ensure closes a duplicate made only of dashboards"
+"$TAB" ensure | grep -q 'closed a duplicate tokenrate tab' || fail "ensure closes a duplicate made only of dashboards"
 query 'assert not any(t["tab_id"] == "w1:t50" for t in s["tabs"])' || fail "all-dashboard duplicate closed"
 query 'assert any(p["pane_id"] == "w1:p61" for p in s["panes"])' || fail "a duplicate holding another pane is left alone"
-[ "$(order | cut -d' ' -f1-3)" = "main tokenRate notes" ] || fail "kept tokenRate tab is still tab 2 (got: $(order))"
-pass "duplicate tokenRate tabs"
+[ "$(order | cut -d' ' -f1-3)" = "main tokenrate notes" ] || fail "kept tokenrate tab is still tab 2 (got: $(order))"
+pass "duplicate tokenrate tabs"
 
 # --- problems print one line and exit 1 ------------------------------------
 reset_state
@@ -281,7 +281,7 @@ FAKE_NEW_SCREEN='Terminal too small' "$TAB" ensure > "$TMP/out" && fail "ensure 
 grep -q 'is not drawing its screen' "$TMP/out" && [ "$(wc -l < "$TMP/out" | tr -d ' ')" = 1 ] ||
   fail "one line names the drawing problem (got: $(cat "$TMP/out"))"
 out=$("$TAB" check) && fail "check fails while the dashboard does not draw"
-[ "$out" = "tokenrate tab: the dashboard in the tokenRate tab is not drawing its screen" ] ||
+[ "$out" = "tokenrate tab: the dashboard in the tokenrate tab is not drawing its screen" ] ||
   fail "check names a dashboard that does not draw (got: $out)"
 reset_state
 query 's["workspaces"].append({"id": "w3", "label": "work"}); json.dump(s, open("'"$STATE_JSON"'", "w"))'
@@ -310,7 +310,7 @@ reset_state
 out=$(env -u TOKENRATE_TAB_WORKSPACE "$TAB" ensure) && fail "no workspace named is a problem"
 case "$out" in *"no workspace named"*) ;; *) fail "missing workspace named (got: $out)" ;; esac
 env -u TOKENRATE_TAB_WORKSPACE HERDR_PANE_ID=w1:p2 "$TAB" ensure >/dev/null || fail "the pane's own workspace is used"
-[ "$(order)" = "main tokenRate notes" ] || fail "opened in the pane's workspace (got: $(order))"
+[ "$(order)" = "main tokenrate notes" ] || fail "opened in the pane's workspace (got: $(order))"
 "$TAB" ensure --workspace other --label Usage >/dev/null || fail "--workspace and --label"
 query 'assert [t["label"] for t in s["tabs"] if t["ws"] == "w2"] == ["1", "Usage"]' || fail "label and workspace from options"
 mkdir -p "$XDG_CONFIG_HOME/tokenrate"

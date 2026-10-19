@@ -1,4 +1,4 @@
-# tokenRate
+# tokenrate
 
 A terminal dashboard of the tokens your coding agents used and what they would cost at API prices, over the last 7, 30 or 90 days.
 It reads the local Claude Code and Codex logs through [ccusage](https://github.com/ccusage/ccusage), so it works offline once ccusage is installed.
@@ -34,9 +34,9 @@ herdr plugin install ontionos/tokenrate
 Herdr clones with `git`, so git must be able to read the repository; for a private copy, sign git in to an account that can, for example `GH_TOKEN=$(gh auth token -u <account>) herdr plugin install ontionos/tokenrate` when git uses the GitHub CLI as its credential helper.
 
 Herdr clones the repository into its own plugin folder and runs the plugin's build step, which installs ccusage 20.0.36 into `~/.local/share/tokenrate/ccusage` with `npm install --prefix` (nothing global, no install scripts).
-Without npm the build step only says so; tokenRate then uses a `ccusage` on your `PATH`.
+Without npm the build step only says so; tokenrate then uses a `ccusage` on your `PATH`.
 
-Open it from the Herdr command palette with **tokenRate: open token dashboard**, or bind a key in `~/.config/herdr/config.toml`:
+Open it from the Herdr command palette with **tokenrate: open token dashboard**, or bind a key in `~/.config/herdr/config.toml`:
 
 ```toml
 [[keys.command]]
@@ -63,7 +63,7 @@ tokenrate                    # the dashboard in this terminal
 tokenrate --refresh          # count again now, then exit
 tokenrate --json --days 7    # the numbers the dashboard draws, as JSON
 tokenrate --snapshot --format plain --width 120 --height 40   # one frame without a terminal (also ansi or svg)
-tokenrate --paths            # every folder and file tokenRate uses
+tokenrate --paths            # every folder and file tokenrate uses
 tokenrate --help
 ```
 
@@ -85,16 +85,16 @@ The overview fits itself to the window: the chart grows into spare rows and the 
 It redraws whenever the terminal or pane is resized.
 
 A mouse click works on the view tabs, the period pills, refresh and help, and the wheel scrolls.
-tokenRate asks the terminal for button presses only, never pointer motion, so moving the mouse over it sends nothing.
+tokenrate asks the terminal for button presses only, never pointer motion, so moving the mouse over it sends nothing.
 
 ### A fixed tab in a Herdr workspace
 
 ```sh
-tokenrate tab ensure --workspace work   # open or repair a "tokenRate" tab as tab 2 of workspace "work"
+tokenrate tab ensure --workspace work   # open or repair a "tokenrate" tab as tab 2 of workspace "work"
 tokenrate tab check --workspace work    # verify it is there, running and drawing; changes nothing
 ```
 
-`ensure` touches only the tokenRate tab and its own dashboard panes and never moves your focus; `--label` names the tab differently and `--quiet` prints only a problem.
+`ensure` touches only the tokenrate tab and its own dashboard panes and never moves your focus; `--label` names the tab differently and `--quiet` prints only a problem.
 Without `--workspace` it uses the `tab_workspace` setting, else the workspace of the Herdr pane it runs in.
 Run it from a login script or a timer to keep the tab open; `tokenrate tab --help` has the details.
 
@@ -111,13 +111,13 @@ The optional file `~/.config/tokenrate/config` (or `$XDG_CONFIG_HOME/tokenrate/c
 | `jev_input_usd_per_mtok` | `0.042` | Jev price per million input tokens |
 | `clef_usd_per_call` | `0.0004` | Clef price per call |
 | `tab_workspace` | unset | workspace label for `tokenrate tab` |
-| `tab_label` | `tokenRate` | label of that tab |
+| `tab_label` | `tokenrate` | label of that tab |
 
 `tokenrate tab ensure` passes every `TOKENRATE_*` variable of its environment on to the dashboard it opens.
 
 ## Files
 
-tokenRate writes only these, and `tokenrate --paths` prints them:
+tokenrate writes only these, and `tokenrate --paths` prints them:
 
 - `~/.cache/tokenrate/` (`$XDG_CACHE_HOME/tokenrate`) - the cached counts, `ccusage.json`, and a short-lived lock folder.
 - `~/.local/share/tokenrate/ccusage/` (`$XDG_DATA_HOME/tokenrate/ccusage`) - the pinned ccusage.
@@ -132,14 +132,14 @@ As a Herdr plugin:
 ```sh
 herdr plugin action invoke purge --plugin tokenrate   # deletes ~/.cache/tokenrate and ~/.local/share/tokenrate
 herdr plugin uninstall tokenrate
-# Herdr keeps an uninstalled plugin's files; these are all of tokenRate's:
+# Herdr keeps an uninstalled plugin's files; these are all of tokenrate's:
 rm -rf ~/.config/herdr/plugins/github-installations/tokenrate-* \
   ~/.config/herdr/plugins/.locks/.tokenrate-*.lock \
   ~/.config/herdr/plugins/config/tokenrate ~/.local/state/herdr/plugins/tokenrate
 rm -rf ~/.config/tokenrate                           # only if you created a config file
 ```
 
-Close any open tokenRate pane or tab first: Herdr keeps an installation that a running pane still uses.
+Close any open tokenrate pane or tab first: Herdr keeps an installation that a running pane still uses.
 
 On its own: `tokenrate --purge`, then delete the cloned folder, any link you made to `bin/tokenrate`, and `~/.config/tokenrate` if you created it.
 
@@ -155,4 +155,4 @@ The tests use a fake ccusage and a fake Herdr, never your real logs or Herdr.
 
 MIT, see [LICENSE](LICENSE).
 The dashboard layout adapts [herdr_agents_tracker](https://github.com/VHemanth45/herdr_agents_tracker) (MIT); its notice is in [LICENSE.herdr_agents_tracker](LICENSE.herdr_agents_tracker).
-Counting is done by [ccusage](https://github.com/ccusage/ccusage) (MIT), which tokenRate runs but does not include.
+Counting is done by [ccusage](https://github.com/ccusage/ccusage) (MIT), which tokenrate runs but does not include.

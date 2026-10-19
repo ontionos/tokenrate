@@ -183,6 +183,40 @@ for l in rows:
     assert len(spark.split()) == 30, (len(spark.split()), spark)
 assert any("▁" in l.split("  ")[-1] for l in rows), "empty days show the baseline"
 PYC
+# Every bar is split by model: a day used by two models shows both colours in its chart column and
+# its Days row, with a legend; the ninth model and later share grey instead of reusing a colour.
+python3 - "$TMP/mixed.json" <<'PYC'
+import json, sys
+names = ["claude-opus-5-5", "claude-fable-5-1"] + [f"model-{i}" for i in range(7)]
+def mb(name, cost):
+    return {"modelName": name, "cost": cost, "cacheReadTokens": 100, "cacheCreationTokens": 0,
+            "inputTokens": 0, "outputTokens": 0}
+day = lambda date, parts: {"period": date, "totalCost": sum(c for _n, c in parts), "cacheReadTokens": 100,
+                           "cacheCreationTokens": 0, "inputTokens": 0, "outputTokens": 0,
+                           "modelBreakdowns": [mb(n, c) for n, c in parts]}
+daily = [day("2026-10-18", [("claude-opus-5-5", 60.0), ("claude-fable-5-1", 40.0)]),
+         day("2026-10-19", [(n, 10.0 - i) for i, n in enumerate(names[2:])])]
+json.dump({"daily": daily, "session": [], "totals": {}}, open(sys.argv[1], "w"))
+PYC
+TOKENRATE_JSON="$TMP/mixed.json" "$SPEND" --snapshot --format ansi --width 120 --height 60 --view days --today "$TODAY" \
+  > "$TMP/mixed.ansi"
+TOKENRATE_JSON="$TMP/mixed.json" "$SPEND" --json --today "$TODAY" > "$TMP/mixed-summary.json"
+python3 - "$TMP/mixed.ansi" "$TMP/mixed-summary.json" <<'PYC' || fail "bars are split by model, with a legend and grey for the rest"
+import json, re, sys
+text = open(sys.argv[1]).read()
+models = [m["name"] for m in json.load(open(sys.argv[2]))["summary"]["models"]]
+lines = text.splitlines()
+chart = "\n".join(lines[lines.index(next(l for l in lines if "COST PER DAY" in l)):][:14])
+opus, fable = "38;5;33", "38;5;170"   # m0 and m1: the two biggest models of the window
+assert models[:2] == ["Opus 5.5", "Fable 5.1"], models
+assert opus in chart and fable in chart, "the two-model day shows both colours in the chart"
+row = next(l for l in lines if "Sun 18 Oct" in l and "▄" in l)
+assert opus in row and fable in row, "the Days row of that day is split too"
+legend = next(l for l in lines if "● " in l and "Opus 5.5" in l)
+assert "Fable 5.1" in legend and "other" in legend, legend
+assert "38;5;244" in next(l for l in lines if "Mon 19 Oct" in l and "▄" in l), "the ninth model is grey"
+assert "38;5;33" not in next(l for l in lines if "Mon 19 Oct" in l and "▄" in l), "no model after the eighth reuses blue"
+PYC
 "$SPEND" --snapshot --format plain --width 120 --height 40 --today "$TODAY" | grep -q "API-equivalent estimate" ||
   fail "header labels the dollars as an estimate"
 "$SPEND" --snapshot --format plain --width 40 --height 10 | grep -q "too small" || fail "tiny terminal message"

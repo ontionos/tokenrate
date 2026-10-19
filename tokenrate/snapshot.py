@@ -40,6 +40,11 @@ def sgr(name: str, basic: bool = False) -> str:
         codes.append(str(30 + styles.BASIC[fallback]))
     elif fg is not None:
         codes.append(f"38;5;{fg}")
+    bg, bg_fallback = styles.background(name)
+    if basic and bg_fallback:
+        codes.append(str(40 + styles.BASIC[bg_fallback]))
+    elif bg is not None:
+        codes.append(f"48;5;{bg}")
     return f"\x1b[{';'.join(codes)}m" if codes else ""
 
 
@@ -80,6 +85,10 @@ def svg(lines: list, width: int, theme: str = "dark", font_size: int = 14) -> st
                 out.append(f'<rect x="{pad + x * cw:.2f}" y="{top:.2f}" width="{len(text) * cw:.2f}" '
                            f'height="{lh:.2f}" fill="{color}"/>')
                 color = t["bg"]
+            bg, _bg_fallback = styles.background(style)
+            if bg is not None:
+                out.append(f'<rect x="{pad + x * cw:.2f}" y="{top:.2f}" width="{len(text) * cw + 0.3:.2f}" '
+                           f'height="{lh + 0.3:.2f}" fill="{styles.RGB.get(bg, t["fg"])}"/>')
             weight = ' font-weight="bold"' if "b" in attrs else ""
             xs, chars = [], []
             for i, ch in enumerate(text):

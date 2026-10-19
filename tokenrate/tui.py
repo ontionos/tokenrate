@@ -107,6 +107,28 @@ class Dashboard:
                 except curses.error:
                     pass
             self.attrs[name] = attr
+        self.has_colors, self.pairs = has, pair
+
+    def attr(self, style: str):
+        """The curses attribute of a style; a two-colour "a/b" style gets its own colour pair on first use."""
+        if style in self.attrs:
+            return self.attrs[style]
+        attr = self.attrs.get(style.split("/", 1)[0], curses.A_NORMAL)
+        if "/" in style and self.has_colors:
+            wide = curses.COLORS >= 256
+            fg, fallback, _ = styles.get(style)
+            bg, bg_fallback = styles.background(style)
+            fg = fg if wide else (styles.BASIC[fallback] if fallback else None)
+            bg = bg if wide else (styles.BASIC[bg_fallback] if bg_fallback else None)
+            if fg is not None and bg is not None and self.pairs + 1 < curses.COLOR_PAIRS:
+                try:
+                    self.pairs += 1
+                    curses.init_pair(self.pairs, fg, bg)
+                    attr = (attr & ~curses.A_COLOR) | curses.color_pair(self.pairs)
+                except curses.error:
+                    pass
+        self.attrs[style] = attr
+        return attr
 
     def draw(self):
         height, width = self.screen.getmaxyx()
@@ -137,7 +159,7 @@ class Dashboard:
                     if action == self.pressed:
                         style = "tab_hot"
                 try:
-                    self.screen.addstr(y, x, text, self.attrs.get(style, curses.A_NORMAL))
+                    self.screen.addstr(y, x, text, self.attr(style))
                 except curses.error:
                     pass
                 x += len(text)

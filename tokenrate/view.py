@@ -12,6 +12,7 @@ LICENSE.herdr_agents_tracker).
 from __future__ import annotations
 
 import datetime as dt
+from collections import defaultdict
 import time
 
 VIEWS = ("Overview", "Models", "Projects", "Days")
@@ -24,7 +25,8 @@ VBLOCKS = " ▁▂▃▄▅▆▇█"
 HBAR, HBAR_HALF = "▄", "▖"
 SPARK = "▂▃▄▅▆"  # the smallest non-zero bar stands above the empty baseline
 SPARK_EMPTY = "▁"
-SPARK_NOTE = "Each row's small bars are scaled to that row's own busiest period; a flat line is a quiet one."
+SPARK_NOTE = ("Each row's small bars are scaled to that row's own busiest period and coloured by its main model; "
+              "a flat line is a quiet one.")
 MODEL_STYLES = tuple(f"m{i}" for i in range(8))
 TOKEN_TYPES = (("cache_read", "cache read", "t0"), ("cache_write", "cache write", "t1"),
                ("input", "input", "t2"), ("output", "output", "t3"))
@@ -163,16 +165,29 @@ def spark_groups(values: list, width: int) -> tuple[list, int]:
     return groups, per
 
 
-def spark(values: list, width: int, style: str, peak: float | None = None) -> list:
-    """Sparkline segments: one bar per period with a space between, a dim baseline where it is empty."""
-    groups, _per = spark_groups(values, width)
-    top = peak if peak else max(groups, default=0)
+def spark(values: list, width: int, style: str, day_models: list | None = None,
+          styles: dict | None = None) -> list:
+    """Sparkline segments: one bar per period with a space between, a dim baseline where it is empty.
+    With per-day model costs, each bar takes the colour of the model that cost most in its period."""
+    groups, per = spark_groups(values, width)
+    top = max(groups, default=0)
+    colours = [style] * len(groups)
+    if day_models and styles is not None:
+        n = len(values)
+        for g in range(len(groups)):
+            end = n - (len(groups) - 1 - g) * per
+            merged = defaultdict(float)
+            for day in day_models[max(0, end - per):end]:
+                for name, c in (day or {}).items():
+                    merged[name] += c
+            if merged:
+                colours[g] = styles.get(max(merged, key=merged.get), "mo")
     out = []
     for i, v in enumerate(groups):
         if i:
             out.append((" ", ""))
         if v > 0 and top > 0:
-            out.append((SPARK[min(len(SPARK) - 1, int(v / top * (len(SPARK) - 0.001)))], style))
+            out.append((SPARK[min(len(SPARK) - 1, int(v / top * (len(SPARK) - 0.001)))], colours[i]))
         else:
             out.append((SPARK_EMPTY, "track"))
     return out
@@ -215,7 +230,106 @@ def section(title: str, note: str = "") -> list:
 
 
 def model_styles(summary: dict) -> dict:
-    return {m["name"]: MODEL_STYLES[i % len(MODEL_STYLES)] for i, m in enumerate(summary.get("models") or [])}
+    """Model name -> colour: the eight biggest models of the window get their own, the rest share grey."""
+    return {m["name"]: MODEL_STYLES[i] if i < len(MODEL_STYLES) else "mo"
+            for i, m in enumerate(summary.get("models") or [])}
+
+
+def stack_parts(models: dict, styles: dict) -> list:
+    """(style, cost) parts of one bar, biggest model of the window first, models sharing grey merged."""
+    order = {name: i for i, name in enumerate(styles)}
+    parts = []
+    for name, cost in sorted(models.items(), key=lambda kv: order.get(kv[0], len(order))):
+        style = styles.get(name, "mo")
+        if cost <= 0:
+            continue
+        if parts and parts[-1][0] == style:
+            parts[-1] = (style, parts[-1][1] + cost)
+        else:
+            parts.append((style, cost))
+    return parts
+
+
+def allot(parts: list, units: int, keep_small: bool = True) -> list:
+    """Split `units` between parts in proportion to their size (largest remainder). With keep_small,
+    every part keeps at least one unit while there are units enough, so a small model stays visible;
+    that suits eighths of a cell, while whole cells of a short bar would overstate a small model."""
+    total = sum(c for _s, c in parts)
+    if total <= 0 or units <= 0:
+        return [0] * len(parts)
+    exact = [c / total * units for _s, c in parts]
+    got = [int(e) for e in exact]
+    if keep_small and units >= len(parts):
+        for i in range(len(parts)):
+            if got[i] == 0:
+                got[i] = 1
+    while sum(got) > units:
+        i = max((k for k in range(len(got)) if got[k] > 1), key=lambda k: got[k] - exact[k])
+        got[i] -= 1
+    for i in sorted(range(len(parts)), key=lambda k: -(exact[k] - got[k]))[:units - sum(got)]:
+        got[i] += 1
+    return got
+
+
+def stacked_cells(parts: list, eighths: int, height: int) -> list:
+    """Glyph and style per row, top row first, of one vertical bar `eighths` tall split into parts.
+    A cell holding two parts draws the lower one as the glyph and the upper one as its background
+    ("lower/upper"), so the split is exact to an eighth of a cell; only the bar's top cell, which
+    has no room for a background, shows just its larger part."""
+    units = []
+    for (style, _c), n in zip(parts, allot(parts, eighths)):
+        units += [style] * n
+    rows = []
+    for r in range(height):
+        lo = (height - 1 - r) * 8
+        cell = units[lo:lo + 8]
+        if not cell:
+            rows.append((" ", ""))
+        elif len(cell) < 8 or len(set(cell)) == 1:
+            main = max(set(cell), key=cell.count)
+            rows.append((VBLOCKS[len(cell)], main))
+        else:
+            lower = cell[0]
+            k = next(i for i, st in enumerate(cell) if st != lower)
+            upper = max(set(cell[k:]), key=cell[k:].count)
+            rows.append((VBLOCKS[k], f"{lower}/{upper}"))
+    return rows
+
+
+def hbar_stacked(parts: list, fraction: float, width: int) -> list:
+    """hbar() split by model: whole cells shared between the parts, a half step in the last part's colour."""
+    fraction = max(0.0, min(1.0, float(fraction or 0)))
+    halves = round(fraction * width * 2)
+    if fraction > 0 and halves == 0:
+        halves = 1
+    full, half = divmod(halves, 2)
+    out = []
+    for (style, _c), n in zip(parts, allot(parts, full, keep_small=False)):
+        if n:
+            out.append((HBAR * n, style))
+    if half:
+        out.append((HBAR_HALF, out[-1][1] if out else (parts[0][0] if parts else "bar")))
+    return out + [("·" * (width - full - half), "track")]
+
+
+def model_legend(summary: dict, width: int, names: list | None = None) -> list:
+    """● name for each colour in use, then one grey "other" for the rest, clipped to the width."""
+    styles = model_styles(summary)
+    names = [m["name"] for m in summary["models"]] if names is None else names
+    out, used, others = [], 0, False
+    for name in names:
+        style = styles.get(name, "mo")
+        if style == "mo":
+            others = True
+            continue
+        item = [("● ", style), (name + "  ", "dim")]
+        if used + seg_len(item) > width:
+            break
+        out += item
+        used += seg_len(item)
+    if others and used + 9 <= width:
+        out += [("● ", "mo"), ("other", "dim")]
+    return out
 
 
 # ---- chrome -------------------------------------------------------------------------------------
@@ -287,7 +401,7 @@ HELP = [
 
 
 def daily_chart(summary: dict, width: int, height: int = 8) -> list:
-    """Vertical bars of cost per day, coloured by each day's main model, peaks labelled."""
+    """Vertical bars of cost per day, each split by model in the models' colours, peaks labelled."""
     days = summary["daily"]
     styles = model_styles(summary)
     axis_w = 7
@@ -296,7 +410,7 @@ def daily_chart(summary: dict, width: int, height: int = 8) -> list:
     per = 1
     if 2 * n <= avail:
         col = max(2, min(5, avail // max(1, n)))
-        cols = [(d["cost"], styles.get(d["top_model"], "bar"), d) for d in days]
+        cols = [(d["cost"], stack_parts(d["models"], styles), d) for d in days]
     else:
         # One cell of bar and one of gap per column, so neighbouring bars never touch.
         col = 2
@@ -304,8 +418,11 @@ def daily_chart(summary: dict, width: int, height: int = 8) -> list:
         cols = []
         for i in range(0, n, per):
             group = days[i:i + per]
-            top = max(group, key=lambda d: d["cost"])
-            cols.append((sum(d["cost"] for d in group), styles.get(top["top_model"], "bar"), group[0]))
+            merged = defaultdict(float)
+            for d in group:
+                for name, c in d["models"].items():
+                    merged[name] += c
+            cols.append((sum(d["cost"] for d in group), stack_parts(merged, styles), group[0]))
     bar_w = col - 1
     peak = max((c[0] for c in cols), default=0)
     lines = []
@@ -326,8 +443,13 @@ def daily_chart(summary: dict, width: int, height: int = 8) -> list:
                 label_style[k] = "peak"
     lines.append([(" " * axis_w, "")] + _styled_row(label_row, label_style))
 
+    stacks = []
+    for value, parts, _d in cols:
+        eighths = round(value / peak * height * 8) if value > 0 else 0
+        if value > 0 and eighths < 2:
+            eighths = 2  # a small day stands above the baseline an empty day gets
+        stacks.append(stacked_cells(parts, eighths, height) if value > 0 else None)
     for r in range(height):
-        level_floor = (height - 1 - r) * 8
         if r == 0:
             axis = usd_short(peak).rjust(axis_w - 2) + " ┤"
         elif r == height // 2:
@@ -335,15 +457,12 @@ def daily_chart(summary: dict, width: int, height: int = 8) -> list:
         else:
             axis = " " * (axis_w - 2) + " │"
         row = [(axis, "axis")]
-        for value, style, _d in cols:
-            eighths = round(value / peak * height * 8) if value > 0 else 0
-            if value > 0 and eighths < 2:
-                eighths = 2  # a small day stands above the baseline an empty day gets
-            lvl = max(0, min(8, eighths - level_floor))
-            if value <= 0 and r == height - 1:
-                row.append((SPARK_EMPTY * bar_w, "track"))
+        for stack in stacks:
+            if stack is None:
+                row.append(((SPARK_EMPTY if r == height - 1 else " ") * bar_w, "track"))
             else:
-                row.append((VBLOCKS[lvl] * bar_w, style))
+                glyph, style = stack[r]
+                row.append((glyph * bar_w, style))
             if col > bar_w:
                 row.append((" " * (col - bar_w), ""))
         lines.append(row)
@@ -368,6 +487,8 @@ def daily_chart(summary: dict, width: int, height: int = 8) -> list:
     if per > 1:
         dates.append((f"   each bar = {per} days", "dim"))
     lines.append(dates)
+    in_use = [m["name"] for m in summary["models"] if m["cost"] > 0]
+    lines.append([(" " * axis_w, "")] + model_legend(summary, width - axis_w, in_use))
     return lines
 
 
@@ -450,9 +571,10 @@ def projects_block(summary: dict, width: int, limit: int = 8) -> list:
     name_w = max(10, min(22, max(len(p["name"]) for p in projects[:limit]) + 1))
     bar_w = max(6, min(48, width - name_w - 19))
     top = projects[0]["cost"] or 1
+    styles = model_styles(summary)
     for p in projects[:limit]:
-        tag = "codex" in p["agents"] and "claude" not in p["agents"]
-        lines.append([(clip(p["name"], name_w - 1) + " ", "bold")] + hbar(p["cost"] / top, bar_w, "proj_codex" if tag else "proj") +
+        lines.append([(clip(p["name"], name_w - 1) + " ", "bold")] +
+                     hbar_stacked(stack_parts(p.get("models") or {}, styles), p["cost"] / top, bar_w) +
                      [(f" {pct(p['share']):>5}", "dim"), (f" {usd(p['cost']):>8}", "money")])
     if len(projects) > limit:
         lines.append([(f"… {len(projects) - limit} more (view 3)", "dim")])
@@ -467,10 +589,12 @@ def busiest_block(summary: dict, width: int, limit: int = 6) -> list:
         return lines + [[("  none in this window", "dim")]]
     peak = busiest[0]["cost"] or 1
     bar_w = max(4, min(36, width - 46))
+    by_date = {d["date"]: d for d in summary["daily"]}
     for b in busiest:
         weekend = dt.date.fromisoformat(b["date"]).weekday() >= 5
+        models = by_date.get(b["date"], {}).get("models", {})
         lines.append([(nice_day(b["date"]), "weekend" if weekend else "bold"), ("  ", "")] +
-                     hbar(b["cost"] / peak, bar_w, "peak") +
+                     hbar_stacked(stack_parts(models, styles), b["cost"] / peak, bar_w) +
                      [(f" {usd(b['cost']):>7}", "money"), (f" {tok(b['tokens']):>6}", "dim"), ("  ", ""),
                       (clip(b["top_model"] or "-", 10), styles.get(b["top_model"], "dim"))])
     return lines
@@ -547,7 +671,7 @@ def overview(summary: dict, width: int, room: int | None = None) -> list:
 
 
 def overview_lines(summary: dict, width: int, chart: int, n_models: int, n_projects: int, n_busiest: int) -> list:
-    lines = [section("Cost per day", "API-equivalent estimate, coloured by the day's main model")]
+    lines = [section("Cost per day", "API-equivalent estimate, each bar split by model")]
     lines += daily_chart(summary, width, chart)
     lines += [chart_caption(summary), []]
     models = lambda w: models_block(summary, w, limit=n_models)
@@ -608,19 +732,20 @@ def projects_view(summary: dict, width: int) -> list:
         spark_w = 0
     bar_w = max(6, room - spark_w - (2 if spark_w else 0))
     top = projects[0]["cost"] or 1
+    styles = model_styles(summary)
     head = clip("project", name_w) + " " * bar_w + f"{'share':>6}{'est.':>9}{'tokens':>7}"
     lines.append([(head + ("  " + spark_title(n, spark_w) if spark_w else ""), "dim")])
     for p in projects:
-        tag = "codex" in p["agents"] and "claude" not in p["agents"]
-        style = "proj_codex" if tag else "proj"
-        row = [(clip(p["name"], name_w - 1) + " ", "bold")] + hbar(p["cost"] / top, bar_w, style) + \
+        row = [(clip(p["name"], name_w - 1) + " ", "bold")] + \
+              hbar_stacked(stack_parts(p.get("models") or {}, styles), p["cost"] / top, bar_w) + \
               [(f" {pct(p['share']):>5}", "dim"), (f" {usd(p['cost']):>8}", "money"), (f" {tok(p['tokens']):>6}", "dim")]
         if spark_w:
-            row += [("  ", "")] + spark(p["daily"], spark_w, style)
+            row += [("  ", "")] + spark(p["daily"], spark_w, "proj", p.get("daily_models"), styles)
         lines.append(row)
     if spark_w:
         lines.append([(" " * (name_w + bar_w + 24), ""), (spark_axis(summary, spark_w), "axis")])
-    lines += [[], [("Claude Code is split by working folder per day; Codex by session folder on its last day.", "dim")]]
+    lines += [[], model_legend(summary, width),
+              [("Bars are split by model; Claude Code by working folder per day, Codex by session folder on its last day.", "dim")]]
     if spark_w:
         lines.append([(SPARK_NOTE, "dim")])
     return lines
@@ -628,7 +753,7 @@ def projects_view(summary: dict, width: int) -> list:
 
 def days_view(summary: dict, width: int, height: int) -> list:
     styles = model_styles(summary)
-    lines = [section("Cost per day", "API-equivalent estimate, coloured by the day's main model")]
+    lines = [section("Cost per day", "API-equivalent estimate, each bar split by model")]
     lines += daily_chart(summary, width, max(6, min(14, height // 3)))
     lines += [chart_caption(summary), []] + change_lines(summary, width) + [[]]
     lines.append(section("Every day", "newest first"))
@@ -643,7 +768,7 @@ def days_view(summary: dict, width: int, height: int) -> list:
                           (f"{'-':>9}", "dim")])
             continue
         lines.append([(clip(nice_day(d["date"]), 12), "weekend" if weekend else "bold")] +
-                     hbar(d["cost"] / peak, bar_w, styles.get(d["top_model"], "bar")) +
+                     hbar_stacked(stack_parts(d["models"], styles), d["cost"] / peak, bar_w) +
                      [(f"{usd(d['cost']):>9}", "money"), (f"{tok(d['tokens']):>8}", ""),
                       (f"{pct(cache):>7}", "dim"), ("  ", ""),
                       (clip(d["top_model"] or "-", 14), styles.get(d["top_model"], "dim"))])

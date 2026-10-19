@@ -344,7 +344,17 @@ def summarize(payload: dict | None, days: int = 30, today: dt.date | None = None
 def _projects(payload: dict | None, start: dt.date, end: dt.date, total_cost: float, dates: list) -> list:
     """Cost per project: Claude per project per day from the instances report, Codex and others by session."""
     payload = payload or {}
-    groups = defaultdict(lambda: {"cost": 0.0, "tokens": 0, "daily": defaultdict(float), "agents": set()})
+    groups = defaultdict(lambda: {"cost": 0.0, "tokens": 0, "daily": defaultdict(float), "agents": set(),
+                                  "models": defaultdict(float), "daily_models": defaultdict(lambda: defaultdict(float))})
+
+    def add_models(g, row, day):
+        """Split a row's cost by model; a row without a breakdown counts as one unnamed model."""
+        parts = [(model_label(mb.get("modelName")), _num(mb.get("cost"))) for mb in row.get("modelBreakdowns") or []]
+        if not parts:
+            parts = [("?", _num(row.get("totalCost")))]
+        for name, c in parts:
+            g["models"][name] += c
+            g["daily_models"][day][name] += c
     enc_home = encoded_home()
     instances = (payload.get("instances") or {}).get("projects") or {}
     have_claude = bool(instances)
@@ -359,6 +369,7 @@ def _projects(payload: dict | None, start: dt.date, end: dt.date, total_cost: fl
             g["tokens"] += sum(_tokens(r).values())
             g["daily"][d.isoformat()] += _num(r.get("totalCost"))
             g["agents"].add("claude")
+            add_models(g, r, d.isoformat())
     codex = payload.get("codex_projects") or {}
     for s in ((payload.get("unified") or {}).get("session") or []):
         if not isinstance(s, dict) or (have_claude and s.get("agent") == "claude"):
@@ -374,9 +385,12 @@ def _projects(payload: dict | None, start: dt.date, end: dt.date, total_cost: fl
         g["tokens"] += sum(_tokens(s).values())
         g["daily"][d.isoformat()] += _num(s.get("totalCost"))
         g["agents"].add(agent)
+        add_models(g, s, d.isoformat())
     out = [{"name": name, "cost": g["cost"], "tokens": g["tokens"],
             "share": g["cost"] / total_cost if total_cost else 0.0, "agents": sorted(g["agents"]),
-            "daily": [g["daily"].get(d, 0.0) for d in dates]}
+            "daily": [g["daily"].get(d, 0.0) for d in dates],
+            "models": dict(sorted(g["models"].items(), key=lambda kv: -kv[1])),
+            "daily_models": [dict(g["daily_models"].get(d, {})) for d in dates]}
            for name, g in groups.items() if g["cost"] or g["tokens"]]
     out.sort(key=lambda p: (-p["cost"], -p["tokens"]))
     return out

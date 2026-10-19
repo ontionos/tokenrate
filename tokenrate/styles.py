@@ -40,6 +40,7 @@ STYLES = {
     "m5": (37, "cyan", ""),
     "m6": (167, "red", ""),
     "m7": (136, "yellow", ""),
+    "mo": (244, "white", ""),  # every model after the eighth: one grey "other" colour
     "t0": (37, "cyan", ""),
     "t1": (98, "magenta", ""),
     "t2": (208, "yellow", ""),
@@ -56,4 +57,14 @@ THEMES = {"dark": {"bg": "#1c1c1e", "fg": "#e6e6e6", "dim": "#8a8a8f"},
 
 
 def get(name: str):
-    return STYLES.get(name, STYLES[""])
+    """(foreground, fallback, attributes) of a style. A two-colour style "a/b" is a cell whose glyph
+    is drawn in a's colour over b's colour as background: the stacked bars split one cell that way."""
+    return STYLES.get(name.split("/", 1)[0], STYLES[""])
+
+
+def background(name: str):
+    """(xterm-256 colour, 8-colour fallback) of a two-colour style's background, or (None, None)."""
+    if "/" not in name:
+        return None, None
+    fg, fallback, _attrs = STYLES.get(name.split("/", 1)[1], STYLES[""])
+    return fg, fallback

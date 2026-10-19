@@ -125,7 +125,7 @@ def install_ccusage() -> int:
         print("tokenrate: npm not found; install Node.js, or set TOKENRATE_CCUSAGE to a ccusage executable",
               file=sys.stderr)
         return 1
-    os.makedirs(target, exist_ok=True)
+    data.private_dir(target)
     cmd = [npm, "install", "--prefix", target, "--ignore-scripts", "--no-audit", "--no-fund", "--no-save",
            "--no-package-lock", f"ccusage@{CCUSAGE_VERSION}"]
     print("tokenrate: " + " ".join(cmd), file=sys.stderr)

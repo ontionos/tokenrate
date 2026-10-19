@@ -98,17 +98,26 @@ def needs_refresh(payload: dict | None, now: float | None = None) -> bool:
     return a is None or a > ttl()
 
 
-def _lock() -> str | None:
-    path = os.path.join(cache_dir(), ".refresh.lock")
-    os.makedirs(cache_dir(), exist_ok=True)
+def private_dir(path: str) -> str:
+    """Create `path` (and parents) and keep it readable by its owner only: usage history is private."""
+    os.makedirs(path, mode=0o700, exist_ok=True)
     try:
-        os.mkdir(path)
+        os.chmod(path, 0o700)
+    except OSError:
+        pass
+    return path
+
+
+def _lock() -> str | None:
+    path = os.path.join(private_dir(cache_dir()), ".refresh.lock")
+    try:
+        os.mkdir(path, 0o700)
         return path
     except FileExistsError:
         try:
             if time.time() - os.path.getmtime(path) > LOCK_STALE_SECONDS:
                 os.rmdir(path)
-                os.mkdir(path)
+                os.mkdir(path, 0o700)
                 return path
         except OSError:
             pass
@@ -149,7 +158,9 @@ def refresh() -> str | None:
                    "unified": unified, "instances": instances,
                    "codex_projects": codex_projects(unified.get("session") or [])}
         tmp = cache_path() + f".tmp{os.getpid()}"
-        with open(tmp, "w") as f:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            os.fchmod(f.fileno(), 0o600)
             json.dump(payload, f, separators=(",", ":"))
         os.replace(tmp, cache_path())
         return None
@@ -165,15 +176,21 @@ def refresh() -> str | None:
 
 
 def codex_projects(sessions: list) -> dict:
-    """Codex session id -> working-directory name, read from each rollout file's first line only."""
-    root = os.path.join(os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex"), "sessions")
+    """Codex session id -> working-directory name, read from each rollout file's first line only.
+    Only files inside the Codex sessions folder are opened: a session id that is absolute, climbs out
+    with "..", or resolves outside through a link is skipped."""
+    root = os.path.realpath(os.path.join(os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex"),
+                                         "sessions"))
     out = {}
     for s in sessions:
         period = s.get("period") if isinstance(s, dict) else None
-        if s.get("agent") != "codex" or not isinstance(period, str) or ".." in period:
+        if s.get("agent") != "codex" or not isinstance(period, str) or not period or os.path.isabs(period):
+            continue
+        path = os.path.realpath(os.path.join(root, period + ".jsonl"))
+        if not path.startswith(root + os.sep):
             continue
         try:
-            with open(os.path.join(root, period + ".jsonl"), "rb") as f:
+            with open(path, "rb") as f:
                 first = json.loads(f.readline(4 << 20) or b"{}")
             cwd = (first.get("payload") or {}).get("cwd")
             if isinstance(cwd, str) and cwd:

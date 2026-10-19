@@ -410,3 +410,34 @@ assert len(s["models"]) >= 3
 a=$("$SPEND" --demo --snapshot --format plain --today "$TODAY"); b=$("$SPEND" --demo --snapshot --format plain --today "$TODAY")
 [ "$a" = "$b" ] || fail "demo is the same for the same day"
 pass "--demo shows made-up data without ccusage"
+
+# --- the cache is private, and Codex rollout lookups stay inside the sessions folder
+python3 - "$CACHE" <<'PYC' || fail "cache folder 0700 and cache file 0600"
+import os, stat, sys
+d = sys.argv[1]
+assert stat.S_IMODE(os.stat(d).st_mode) == 0o700, oct(os.stat(d).st_mode)
+assert stat.S_IMODE(os.stat(os.path.join(d, "ccusage.json")).st_mode) == 0o600
+PYC
+mkdir -p "$TMP/outside" "$CODEX_HOME/sessions/link"
+printf '%s\n' '{"type":"session_meta","payload":{"cwd":"/private/leaked-name"}}' > "$TMP/outside/rollout.jsonl"
+ln -s "$TMP/outside/rollout.jsonl" "$CODEX_HOME/sessions/link/rollout.jsonl"
+python3 - "$TMP" <<'PYC'
+import json, sys
+tmp = sys.argv[1]
+s = lambda period: {"agent": "codex", "period": period, "totalCost": 1.0, "cacheReadTokens": 1,
+                    "cacheCreationTokens": 0, "inputTokens": 0, "outputTokens": 0,
+                    "metadata": {"lastActivity": "2026-10-19T10:00:00Z"}}
+u = json.load(open(f"{tmp}/unified.json"))
+u["session"] += [s(f"{tmp}/outside/rollout"), s("../../outside/rollout"), s("link/rollout")]
+json.dump(u, open(f"{tmp}/unified-escape.json", "w"))
+PYC
+sed "s#$TMP/unified.json#$TMP/unified-escape.json#" "$TMP/bin/ccusage" > "$TMP/bin/ccusage-escape"
+chmod +x "$TMP/bin/ccusage-escape"
+XDG_CACHE_HOME="$TMP/cache-escape" TOKENRATE_CCUSAGE="$TMP/bin/ccusage-escape" "$SPEND" --json --today "$TODAY" |
+  python3 -c '
+import json, sys
+names = {p["name"] for p in json.load(sys.stdin)["summary"]["projects"]}
+assert "leaked-name" not in names, names
+assert "codex-dock" in names, names
+' || fail "absolute, climbing and linked Codex session ids are not followed"
+pass "the cache is private and Codex lookups stay inside the sessions folder"

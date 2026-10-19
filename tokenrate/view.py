@@ -24,6 +24,7 @@ VBLOCKS = " ▁▂▃▄▅▆▇█"
 HBAR, HBAR_HALF = "▄", "▖"
 SPARK = "▂▃▄▅▆"  # the smallest non-zero bar stands above the empty baseline
 SPARK_EMPTY = "▁"
+SPARK_NOTE = "Each row's small bars are scaled to that row's own busiest period; a flat line is a quiet one."
 MODEL_STYLES = tuple(f"m{i}" for i in range(8))
 TOKEN_TYPES = (("cache_read", "cache read", "t0"), ("cache_write", "cache write", "t1"),
                ("input", "input", "t2"), ("output", "output", "t3"))
@@ -184,7 +185,7 @@ def spark_width(n_days: int, width: int) -> int:
 
 def spark_title(n_days: int, width: int) -> str:
     per = spark_groups([0] * n_days, width)[1]
-    return ("per day" if per == 1 else f"per {per} days") + ", each row to its own peak"
+    return "per day" if per == 1 else f"per {per} days"
 
 
 def spark_axis(summary: dict, width: int) -> str:
@@ -590,7 +591,7 @@ def models_view(summary: dict, width: int) -> list:
             row += spark(m["daily"], spark_w, styles[m["name"]])
         lines.append(row)
     if spark_w:
-        lines.append([(" " * (name_w + 44), ""), (spark_axis(summary, spark_w), "axis")])
+        lines += [[(" " * (name_w + 44), ""), (spark_axis(summary, spark_w), "axis")], [], [(SPARK_NOTE, "dim")]]
     return lines
 
 
@@ -620,6 +621,8 @@ def projects_view(summary: dict, width: int) -> list:
     if spark_w:
         lines.append([(" " * (name_w + bar_w + 24), ""), (spark_axis(summary, spark_w), "axis")])
     lines += [[], [("Claude Code is split by working folder per day; Codex by session folder on its last day.", "dim")]]
+    if spark_w:
+        lines.append([(SPARK_NOTE, "dim")])
     return lines
 
 

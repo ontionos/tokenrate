@@ -170,7 +170,8 @@ sed -n '/COST PER DAY/,/└/p' "$TMP/ov90.txt" | grep -q '[▁▂▃▄▅▆▇
   fail "90-day chart bars touch each other"
 grep -q "each bar = 2 days" "$TMP/ov90.txt" || fail "grouped chart says how many days a bar holds"
 "$SPEND" --snapshot --format plain --width 160 --height 40 --view projects --today "$TODAY" > "$TMP/proj.txt"
-grep -q "per day, each row to its own peak" "$TMP/proj.txt" || fail "the sparkline column is titled"
+grep -q "tokens  per day" "$TMP/proj.txt" || fail "the sparkline column is titled"
+grep -q "scaled to that row.s own busiest period" "$TMP/proj.txt" || fail "the sparkline scale is explained"
 grep -q "20 Sep .* 19 Oct" "$TMP/proj.txt" || fail "the sparkline column shows its first and last day"
 python3 - "$TMP/proj.txt" <<'PYC' || fail "sparklines: a space between bars, a baseline on empty days"
 import re, sys

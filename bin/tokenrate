@@ -1,0 +1,32 @@
+#!/bin/sh
+# tokenrate - token and cost dashboard for the last 7, 30 or 90 days, from ccusage.
+# `tokenrate --help` lists every option; README.md covers install and use.
+#
+# Herdr starts plugin commands with a minimal PATH, so known interpreter
+# locations are probed instead of trusting `python3` on PATH. Python 3.9+ and
+# its standard library (with curses) are all it needs. TOKENRATE_PYTHON picks
+# the interpreter.
+link=$0
+while [ -L "$link" ]; do
+  target=$(readlink "$link")
+  case "$target" in
+    /*) link=$target ;;
+    *) link=$(dirname -- "$link")/$target ;;
+  esac
+done
+root=$(CDPATH='' cd -- "$(dirname -- "$link")/.." && pwd -P)
+PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+export PATH
+python=
+for py in "${TOKENRATE_PYTHON:-}" /opt/homebrew/bin/python3 /usr/local/bin/python3 "$(command -v python3 2>/dev/null)" /usr/bin/python3; do
+  [ -n "$py" ] && [ -x "$py" ] || continue
+  if "$py" -c 'import sys, curses; sys.exit(sys.version_info < (3, 9))' 2>/dev/null; then
+    python=$py
+    break
+  fi
+done
+if [ -z "$python" ]; then
+  echo "tokenrate: needs Python 3.9+ with curses; set TOKENRATE_PYTHON to an interpreter" >&2
+  exit 1
+fi
+PYTHONPATH="$root" exec "$python" -B -s -m tokenrate "$@"

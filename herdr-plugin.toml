@@ -1,0 +1,43 @@
+# tokenRate: token and cost dashboard (last 7, 30 or 90 days) in a Herdr overlay.
+# The pane runs bin/tokenrate from this folder. No network after the one-time
+# ccusage install, no background process: the overlay closes when the
+# dashboard quits (q). README.md covers install, use and uninstall.
+#
+# A key binding goes in ~/.config/herdr/config.toml, for example:
+#   [[keys.command]]
+#   key = "prefix+u"
+#   type = "plugin_action"
+#   command = "tokenrate.open"
+#   description = "token and cost dashboard"
+id = "tokenrate"
+name = "tokenRate"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Token and cost dashboard over the last 7, 30 or 90 days, from ccusage (API-equivalent estimate)."
+platforms = ["macos", "linux"]
+
+# On install and update: put the pinned ccusage in tokenRate's own data folder
+# (~/.local/share/tokenrate/ccusage). Without npm it only says so; the
+# dashboard then uses a ccusage found on PATH.
+[[build]]
+command = ["/bin/sh", "-c", "\"$HERDR_PLUGIN_ROOT/bin/tokenrate\" --install-ccusage || true"]
+
+[[panes]]
+id = "dashboard"
+title = "tokenRate"
+placement = "overlay"
+command = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/tokenrate\""]
+
+[[actions]]
+id = "open"
+title = "tokenRate: open token dashboard"
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["/bin/sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"${HERDR_PLUGIN_ID:-tokenrate}\" --entrypoint dashboard --focus"]
+
+# Run before `herdr plugin uninstall tokenrate`: deletes tokenRate's cache and
+# its ccusage install, which live outside this plugin folder.
+[[actions]]
+id = "purge"
+title = "tokenRate: delete its cache and ccusage install (before uninstalling)"
+contexts = ["global"]
+command = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/tokenrate\" --purge"]

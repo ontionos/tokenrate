@@ -149,6 +149,15 @@ for w in 80 120 200; do
     [ "$long" = 0 ] || fail "$v at $w columns has $long lines wider than the terminal"
   done
 done
+# The overview fits itself to the window: a split-pane width (one column) and a short window still
+# show it whole, down to the last line, and spare rows make the chart taller instead of staying empty.
+for size in 100x48 120x30 80x45; do
+  "$SPEND" --snapshot --format plain --width "${size%x*}" --height "${size#*x}" --today "$TODAY" | grep -q "WHAT CHANGED" ||
+    fail "the whole overview fits $size without scrolling"
+done
+bars() { "$SPEND" --snapshot --format plain --width 120 --height "$1" --today "$TODAY" |
+  sed -n '/COST PER DAY/,/^ *$/p' | grep -c '[▁▂▃▄▅▆▇█]'; }
+[ "$(bars 70)" -gt "$(bars 40)" ] || fail "a taller window draws a taller chart ($(bars 70) vs $(bars 40) rows)"
 "$SPEND" --snapshot --format plain --width 120 --height 40 --today "$TODAY" | grep -q "API-equivalent estimate" ||
   fail "header labels the dollars as an estimate"
 "$SPEND" --snapshot --format plain --width 40 --height 10 | grep -q "too small" || fail "tiny terminal message"

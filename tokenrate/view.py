@@ -469,18 +469,45 @@ def classifiers_line(summary: dict) -> list | None:
 # ---- views --------------------------------------------------------------------------------------
 
 
-def overview(summary: dict, width: int) -> list:
+# Overview layouts from roomiest to most compact: (chart rows, models, projects, busiest days).
+# The first that fits the window wins, and spare rows then make the chart taller, so a window that
+# can hold the whole overview never needs scrolling.
+OVERVIEW_FITS = ((8, 6, 8, 6), (7, 6, 8, 6), (6, 6, 8, 6), (6, 4, 5, 4), (5, 4, 5, 4), (4, 4, 5, 4), (4, 3, 3, 3))
+CHART_MAX = 16
+
+
+def overview(summary: dict, width: int, room: int | None = None) -> list:
+    fits = OVERVIEW_FITS if width >= 70 else tuple(f for f in OVERVIEW_FITS if f[0] <= 6)
+    if room is None:
+        return overview_lines(summary, width, *fits[0])
+    for chart, *limits in fits:
+        lines = overview_lines(summary, width, chart, *limits)
+        if len(lines) <= room:
+            while chart < CHART_MAX and len(lines) < room:
+                taller = overview_lines(summary, width, chart + 1, *limits)
+                if len(taller) > room:
+                    break
+                chart, lines = chart + 1, taller
+            return lines
+    return lines
+
+
+def overview_lines(summary: dict, width: int, chart: int, n_models: int, n_projects: int, n_busiest: int) -> list:
     lines = [section("Cost per day", "API-equivalent estimate, coloured by the day's main model")]
-    lines += daily_chart(summary, width, 8 if width >= 70 else 6)
+    lines += daily_chart(summary, width, chart)
     lines += [chart_caption(summary), []]
+    models = lambda w: models_block(summary, w, limit=n_models)
+    projects = lambda w: projects_block(summary, w, limit=n_projects)
+    busiest = lambda w: busiest_block(summary, w, limit=n_busiest)
+    tokens = lambda w: tokens_block(summary, w)
     if width >= TWO_COLUMNS:
         lw = (width - 3) * 11 // 20
         rw = width - 3 - lw
-        lines += hcat(models_block(summary, lw), tokens_block(summary, rw), lw, rw) + [[]]
-        lines += hcat(projects_block(summary, lw), busiest_block(summary, rw), lw, rw) + [[]]
+        lines += hcat(models(lw), tokens(rw), lw, rw) + [[]]
+        lines += hcat(projects(lw), busiest(rw), lw, rw) + [[]]
     else:
-        for block in (models_block, tokens_block, projects_block, busiest_block):
-            lines += block(summary, width) + [[]]
+        for block in (models, tokens, projects, busiest):
+            lines += block(width) + [[]]
     lines += change_lines(summary, width)
     cl = classifiers_line(summary)
     if cl:
@@ -554,7 +581,8 @@ def days_view(summary: dict, width: int, height: int) -> list:
     return lines
 
 
-def body(summary: dict, view: int, width: int, height: int) -> list:
+def body(summary: dict, view: int, width: int, height: int, room: int | None = None) -> list:
+    """The view's lines; `room` is how many rows the body gets, which the overview fits itself to."""
     if not summary["has_data"]:
         first = summary.get("history_first")
         return [[], [("No token usage in this window.", "bold")],
@@ -566,7 +594,7 @@ def body(summary: dict, view: int, width: int, height: int) -> list:
         return projects_view(summary, width)
     if view == 3:
         return days_view(summary, width, height)
-    return overview(summary, width)
+    return overview(summary, width, room)
 
 
 def status_text(summary: dict | None, refreshing: bool, error: str | None, now: float | None = None) -> str:
@@ -589,8 +617,9 @@ def screen(summary: dict, view: int, width: int, height: int, status: str, error
     head = header(summary, view, summary["days"], width, status)
     if error:
         head.append([("! ", "up"), (error, "up")])
-    content = HELP if show_help else body(summary, view, width, height)
-    return head, content, [footer(width)]
+    foot = [footer(width)]
+    content = HELP if show_help else body(summary, view, width, height, max(1, height - len(head) - len(foot)))
+    return head, content, foot
 
 
 def loading_screen(width: int, message: str) -> list:

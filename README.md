@@ -81,6 +81,9 @@ After that the counts are cached and counted again only when they are older than
 | `↑` `↓` `j` `k` | scroll; `PgUp` `PgDn` `Space` `b` page; `g` `G` top and bottom |
 | `?` | help |
 
+The overview fits itself to the window: the chart grows into spare rows and the lists shorten when rows are few, so scrolling is only needed in a window too small for even the compact overview, or for long lists such as 90 days of Days.
+It redraws whenever the terminal or pane is resized.
+
 A mouse click works on the view tabs, the period pills, refresh and help, and the wheel scrolls.
 tokenRate asks the terminal for button presses only, never pointer motion, so moving the mouse over it sends nothing.
 

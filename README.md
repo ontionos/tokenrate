@@ -31,6 +31,8 @@ A subscription is billed separately and does not change with these numbers.
 herdr plugin install ontionos/tokenrate
 ```
 
+Herdr clones with `git`, so git must be able to read the repository; for a private copy, sign git in to an account that can, for example `GH_TOKEN=$(gh auth token -u <account>) herdr plugin install ontionos/tokenrate` when git uses the GitHub CLI as its credential helper.
+
 Herdr clones the repository into its own plugin folder and runs the plugin's build step, which installs ccusage 20.0.36 into `~/.local/share/tokenrate/ccusage` with `npm install --prefix` (nothing global, no install scripts).
 Without npm the build step only says so; tokenRate then uses a `ccusage` on your `PATH`.
 
@@ -118,7 +120,7 @@ tokenRate writes only these, and `tokenrate --paths` prints them:
 - `~/.local/share/tokenrate/ccusage/` (`$XDG_DATA_HOME/tokenrate/ccusage`) - the pinned ccusage.
 - `~/.config/tokenrate/config` - only if you create it.
 
-As a Herdr plugin, Herdr also keeps the cloned plugin and its registration under `~/.config/herdr/plugins/`.
+As a Herdr plugin, Herdr also keeps the cloned plugin and its registration under `~/.config/herdr/plugins/`, and an empty state folder in `~/.local/state/herdr/plugins/tokenrate`.
 
 ## Uninstall
 
@@ -127,9 +129,14 @@ As a Herdr plugin:
 ```sh
 herdr plugin action invoke purge --plugin tokenrate   # deletes ~/.cache/tokenrate and ~/.local/share/tokenrate
 herdr plugin uninstall tokenrate
-rm -rf ~/.config/herdr/plugins/config/tokenrate      # the empty settings folder Herdr made for the plugin
+# Herdr keeps an uninstalled plugin's files; these are all of tokenRate's:
+rm -rf ~/.config/herdr/plugins/github-installations/tokenrate-* \
+  ~/.config/herdr/plugins/.locks/.tokenrate-*.lock \
+  ~/.config/herdr/plugins/config/tokenrate ~/.local/state/herdr/plugins/tokenrate
 rm -rf ~/.config/tokenrate                           # only if you created a config file
 ```
+
+Close any open tokenRate pane or tab first: Herdr keeps an installation that a running pane still uses.
 
 On its own: `tokenrate --purge`, then delete the cloned folder, any link you made to `bin/tokenrate`, and `~/.config/tokenrate` if you created it.
 

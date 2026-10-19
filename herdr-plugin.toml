@@ -18,9 +18,10 @@ platforms = ["macos", "linux"]
 
 # On install and update: put the pinned ccusage in tokenRate's own data folder
 # (~/.local/share/tokenrate/ccusage). Without npm it only says so; the
-# dashboard then uses a ccusage found on PATH.
+# dashboard then uses a ccusage found on PATH. Build commands run in the
+# checkout without HERDR_PLUGIN_ROOT, so the path is relative.
 [[build]]
-command = ["/bin/sh", "-c", "\"$HERDR_PLUGIN_ROOT/bin/tokenrate\" --install-ccusage || true"]
+command = ["/bin/sh", "-c", "bin/tokenrate --install-ccusage || true"]
 
 [[panes]]
 id = "dashboard"

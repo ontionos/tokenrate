@@ -25,8 +25,7 @@ VBLOCKS = " ▁▂▃▄▅▆▇█"
 HBAR, HBAR_HALF = "▄", "▖"
 SPARK = "▂▃▄▅▆"  # the smallest non-zero bar stands above the empty baseline
 SPARK_EMPTY = "▁"
-SPARK_NOTE = ("Each row's small bars are scaled to that row's own busiest period and coloured by its main model; "
-              "a flat line is a quiet one.")
+SPARK_NOTE = "Small bars: each row to its own busiest period, coloured by its main model; a flat line is a quiet one."
 MODEL_STYLES = tuple(f"m{i}" for i in range(8))
 TOKEN_TYPES = (("cache_read", "cache read", "t0"), ("cache_write", "cache write", "t1"),
                ("input", "input", "t2"), ("output", "output", "t3"))

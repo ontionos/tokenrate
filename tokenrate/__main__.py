@@ -21,6 +21,7 @@ tokenrate - token and cost dashboard over the last 7, 30 or 90 days, from ccusag
                                      print one frame without a terminal
   tokenrate --json [--days N]        print the summary the views are drawn from
   tokenrate --install-ccusage        install the pinned ccusage into the data folder (needs network once)
+  tokenrate --demo [...]             any of the above with made-up data instead of your logs
   tokenrate --paths                  print every folder and file tokenrate uses
   tokenrate --purge                  delete tokenrate's cache and its ccusage install (not your config)
   tokenrate tab ensure|check ...     keep the dashboard open as tab 2 of a Herdr workspace (tab --help)
@@ -40,6 +41,7 @@ def main(argv=None) -> int:
     p.add_argument("--refresh", action="store_true")
     p.add_argument("--install-ccusage", action="store_true")
     p.add_argument("--paths", action="store_true")
+    p.add_argument("--demo", action="store_true", help="made-up data instead of your logs")
     p.add_argument("--purge", action="store_true")
     p.add_argument("--version", action="version", version=f"tokenrate {__version__}")
     p.add_argument("--no-refresh", action="store_true", help="never run ccusage; use the cache as it is")
@@ -55,6 +57,8 @@ def main(argv=None) -> int:
     a = p.parse_args(argv)
     view_index = [v.lower() for v in view.VIEWS].index(a.view)
     today = dt.date.fromisoformat(a.today) if a.today else None
+    if a.demo:
+        os.environ["TOKENRATE_DEMO"] = a.today or "1"
 
     if a.install_ccusage:
         return install_ccusage()

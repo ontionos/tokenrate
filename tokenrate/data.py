@@ -9,7 +9,7 @@ one cached payload. Readers use that payload until it is older than the TTL.
 The cache lives in settings.cache_dir(). ccusage is the `ccusage` setting, else the pinned copy
 `tokenrate --install-ccusage` put in settings.data_dir(), else `ccusage` on PATH; settings.py owns
 the `ttl` and `ccusage` settings. TOKENRATE_JSON reads that payload (or raw unified ccusage JSON)
-instead of the cache and never refreshes. CODEX_HOME (default ~/.codex) is read only to name Codex
+instead of the cache and never refreshes; TOKENRATE_DEMO (set by --demo) shows demo.py's made-up data. CODEX_HOME (default ~/.codex) is read only to name Codex
 session projects.
 """
 
@@ -65,6 +65,10 @@ def ccusage_bin() -> str | None:
 
 def read_payload() -> tuple[dict | None, str | None]:
     """The payload to show and an error to surface, without ever running ccusage."""
+    if os.environ.get("TOKENRATE_DEMO"):
+        from . import demo
+        when = os.environ["TOKENRATE_DEMO"]
+        return demo.payload(dt.date.fromisoformat(when) if len(when) == 10 else None), None
     fixture = os.environ.get("TOKENRATE_JSON")
     path = fixture or cache_path()
     try:
@@ -88,7 +92,7 @@ def age(payload: dict | None, now: float | None = None) -> float | None:
 
 
 def needs_refresh(payload: dict | None, now: float | None = None) -> bool:
-    if os.environ.get("TOKENRATE_JSON"):
+    if os.environ.get("TOKENRATE_JSON") or os.environ.get("TOKENRATE_DEMO"):
         return False
     a = age(payload, now)
     return a is None or a > ttl()
@@ -125,7 +129,7 @@ def _run(cmd: list[str]) -> dict:
 
 def refresh() -> str | None:
     """Run ccusage once (two sequential reports) and replace the cache; returns an error or None."""
-    if os.environ.get("TOKENRATE_JSON"):
+    if os.environ.get("TOKENRATE_JSON") or os.environ.get("TOKENRATE_DEMO"):
         return None
     exe = ccusage_bin()
     if not exe:

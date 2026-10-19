@@ -171,7 +171,7 @@ sed -n '/COST PER DAY/,/└/p' "$TMP/ov90.txt" | grep -q '[▁▂▃▄▅▆▇
 grep -q "each bar = 2 days" "$TMP/ov90.txt" || fail "grouped chart says how many days a bar holds"
 "$SPEND" --snapshot --format plain --width 160 --height 40 --view projects --today "$TODAY" > "$TMP/proj.txt"
 grep -q "tokens  per day" "$TMP/proj.txt" || fail "the sparkline column is titled"
-grep -q "scaled to that row.s own busiest period" "$TMP/proj.txt" || fail "the sparkline scale is explained"
+grep -q "each row to its own busiest period" "$TMP/proj.txt" || fail "the sparkline scale is explained"
 grep -q "20 Sep .* 19 Oct" "$TMP/proj.txt" || fail "the sparkline column shows its first and last day"
 python3 - "$TMP/proj.txt" <<'PYC' || fail "sparklines: a space between bars, a baseline on empty days"
 import re, sys
@@ -396,3 +396,17 @@ assert "✓".encode() in buf[mark:], "a finished count shows a tick"
 os.write(fd, b"q"); pump(0.5)
 PY
 pass "refresh shows a moving bright spinner while counting, then a tick"
+
+# --- --demo draws made-up data and never runs ccusage or reads the cache ----
+before=$(calls)
+TOKENRATE_TTL=0 "$SPEND" --demo --json --today "$TODAY" | python3 -c '
+import json, sys
+s = json.load(sys.stdin)["summary"]
+names = {p["name"] for p in s["projects"]}
+assert s["has_data"] and s["cost"] > 0 and "web-app" in names, (s["cost"], names)
+assert len(s["models"]) >= 3
+' || fail "demo summary"
+[ "$(calls)" = "$before" ] || fail "demo never runs ccusage"
+a=$("$SPEND" --demo --snapshot --format plain --today "$TODAY"); b=$("$SPEND" --demo --snapshot --format plain --today "$TODAY")
+[ "$a" = "$b" ] || fail "demo is the same for the same day"
+pass "--demo shows made-up data without ccusage"

@@ -39,6 +39,7 @@ class Dashboard:
         self.summaries = {}
         self.worker = None
         self.refresh_error = None
+        self.done_at = None  # when the last count finished, for the short "✓ updated"
         self.dirty = True
         self.minute = int(time.time() // 60)
         self.targets = []
@@ -67,6 +68,7 @@ class Dashboard:
             self.worker = None
             self.payload, self.error = data.read_payload()
             self.summaries.clear()
+            self.done_at = time.time() if not self.refresh_error else None
             self.dirty = True
 
     def summary(self):
@@ -134,14 +136,15 @@ class Dashboard:
         height, width = self.screen.getmaxyx()
         self.screen.erase()
         if self.payload is None:
-            msg = "Counting tokens…" if self.worker else (self.refresh_error or self.error or "No data yet.")
+            spin = view.SPINNER[int(time.time() * 10) % len(view.SPINNER)]
+            msg = f"{spin} Counting tokens…" if self.worker else (self.refresh_error or self.error or "No data yet.")
             lines = view.loading_screen(width - 2, msg)
             if not self.worker:
                 lines.append([("Press r to try again, q to close.", "dim")])
             lines = [[(" ", "")] + view.clip_line(line, width - 2) for line in lines]
         else:
             s = self.summary()
-            status = view.status_text(s, bool(self.worker), self.refresh_error)
+            status = view.status_text(s, bool(self.worker), self.refresh_error, done_at=self.done_at)
             lines = snapshot.frame(s, self.view, width, height, status, self.refresh_error or self.error,
                                    self.help, self.scroll)
             self.scroll = self.clamped_scroll(s, width, height)
@@ -185,9 +188,13 @@ class Dashboard:
                     self.start_refresh()
             if self.pressed and time.time() - self.pressed_at > PRESS_LIGHT:
                 self.pressed, self.dirty = None, True
+            if self.worker:
+                self.dirty = True  # the spinner moves
+            if self.done_at and time.time() - self.done_at >= view.DONE_SHOWN:
+                self.done_at, self.dirty = None, True
             if self.dirty:
                 self.draw()
-            self.screen.timeout(100 if self.pressed else 500)
+            self.screen.timeout(100 if self.pressed or self.worker else 500)
             key = self.screen.getch()
             if key == -1:
                 continue
@@ -221,8 +228,8 @@ class Dashboard:
             self.view, self.scroll = (self.view - 1) % len(view.VIEWS), 0
         elif key in map(ord, "1234"):
             self.view, self.scroll = int(chr(key)) - 1, 0
-        elif key in map(ord, "739"):
-            self.days = {"7": 7, "3": 30, "9": 90}[chr(key)]
+        elif key in map(ord, "789"):  # 7, 8, 9 side by side; 3 is the Projects view
+            self.days = {"7": 7, "8": 30, "9": 90}[chr(key)]
         elif key == ord("d"):
             self.days = view.RANGES[(view.RANGES.index(self.days) + 1) % len(view.RANGES)]
         elif key in (curses.KEY_DOWN, ord("j")):

@@ -22,6 +22,9 @@ STYLES = {
     "key": (None, None, "r"),
     "rule": (None, None, "d"),
     "status": (None, None, "d"),
+    "busy": (208, "yellow", "b"),      # the spinner while counting
+    "busy_btn": (208, "yellow", "rb"),  # the refresh button while counting
+    "done": (35, "green", "b"),        # "✓ updated" right after a count
     "axis": (244, None, ""),
     "track": (None, None, "d"),
     "money": (35, "green", "b"),

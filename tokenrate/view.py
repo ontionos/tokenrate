@@ -31,6 +31,8 @@ MODEL_STYLES = tuple(f"m{i}" for i in range(8))
 TOKEN_TYPES = (("cache_read", "cache read", "t0"), ("cache_write", "cache write", "t1"),
                ("input", "input", "t2"), ("output", "output", "t3"))
 MIN_WIDTH, MIN_HEIGHT = 50, 12
+SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"  # one frame per tenth of a second while counting
+DONE_SHOWN = 4  # seconds "✓ updated" stays lit after a count finishes
 TWO_COLUMNS = 110
 
 
@@ -359,8 +361,9 @@ def header(summary: dict, view: int, rng: int, width: int, status: str) -> list:
     else:
         lines = [line1, line2, [(period, "bold"), (f" · {summary['active_days']} active days", "dim")]]
     note = "subscription: not a bill"
-    button = Click(" ↻ refresh ", "tab", ("refresh",))
-    tail = [(note, "dim"), (" · ", "rule"), (status, "status"), (" ", ""), button]
+    text, style, spin = status if isinstance(status, tuple) else (status, "status", "")
+    button = Click(f" {spin} refreshing ", "busy_btn", ("refresh",)) if spin else Click(" ↻ refresh ", "tab", ("refresh",))
+    tail = [(note, "dim"), (" · ", "rule"), (text, style), (" ", ""), button]
     if seg_len(tail) + 2 > width:
         tail = tail[2:]
     lines.append([("─" * max(0, width - seg_len(tail) - 2), "rule"), ("  ", "")] + tail)
@@ -369,7 +372,7 @@ def header(summary: dict, view: int, rng: int, width: int, status: str) -> list:
 
 def footer(width: int) -> list:
     keys = (("q", "quit", None), ("r", "refresh", ("refresh",)), ("tab 1-4", "view", None),
-            ("7 3 9", "days", None), ("↑↓", "scroll", None), ("?", "help", ("help",)))
+            ("7 8 9", "days", None), ("↑↓", "scroll", None), ("?", "help", ("help",)))
     line = []
     for k, label, action in keys:
         item = [Click(f" {k} ", "key", action) if action else (f" {k} ", "key"), (f" {label}  ", "dim")]
@@ -384,7 +387,7 @@ HELP = [
     [("  q / Esc      ", "key"), ("close", "")],
     [("  r            ", "key"), ("count again now (ccusage runs once, a few seconds)", "")],
     [("  tab / 1-4    ", "key"), ("Overview, Models, Projects, Days", "")],
-    [("  7 / 3 / 9    ", "key"), ("last 7, 30 or 90 days   (d cycles)", "")],
+    [("  7 / 8 / 9    ", "key"), ("last 7, 30 or 90 days   (d cycles)", "")],
     [("  ↑ ↓ j k      ", "key"), ("scroll; PgUp PgDn space b page; g G top/bottom", "")],
     [("  mouse        ", "key"), ("click a view, a period or refresh; the wheel scrolls", "")],
     [],
@@ -791,18 +794,24 @@ def body(summary: dict, view: int, width: int, height: int, room: int | None = N
     return overview(summary, width, room)
 
 
-def status_text(summary: dict | None, refreshing: bool, error: str | None, now: float | None = None) -> str:
+def status_text(summary: dict | None, refreshing: bool, error: str | None, now: float | None = None,
+                done_at: float | None = None) -> tuple:
+    """(text, style, spinner frame or "") for the header: a bright moving spinner on the refresh button while
+    ccusage counts,
+    a green tick for a few seconds after it finished, red when it failed, else when the data is from."""
+    now = now or time.time()
     if refreshing:
-        return "counting…"
+        return "counting tokens…", "busy", SPINNER[int(now * 10) % len(SPINNER)]
     if error:
-        return "refresh failed"
+        return "✗ refresh failed", "up", ""
     fetched = (summary or {}).get("fetched_at")
     if not fetched:
-        return "no data yet"
-    now = now or time.time()
-    mins = int((now - fetched) // 60)
+        return "no data yet", "status", ""
     when = time.strftime("%H:%M", time.localtime(fetched))
-    return f"updated {when}" + (f" ({mins} min ago)" if mins >= 1 else "")
+    if done_at and now - done_at < DONE_SHOWN:
+        return f"✓ updated {when}", "done", ""
+    mins = int((now - fetched) // 60)
+    return f"updated {when}" + (f" ({mins} min ago)" if mins >= 1 else ""), "status", ""
 
 
 def screen(summary: dict, view: int, width: int, height: int, status: str, error: str | None = None,

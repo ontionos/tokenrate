@@ -250,7 +250,7 @@ pass "missing ccusage"
 
 # --- the curses screen: keys, real SGR mouse clicks and wheel, modes released on exit
 python3 - "$SPEND" <<'PY' || fail "interactive screen"
-import os, pty, re, select, struct, sys, termios, fcntl, time
+import os, pty, re, select, signal, struct, sys, termios, fcntl, time
 pid, fd = pty.fork()
 if pid == 0:
     os.environ["TERM"] = "xterm-256color"
@@ -304,6 +304,21 @@ for _ in range(20):
     pump(0.05)
 pump(0.3)
 assert b"COST PER DAY" in since(mark), "wheel up scrolls back to the top"
+# Period keys 7, 8 and 9 sit side by side; 3 stays the Projects view and leaves the period alone.
+# curses sends only the cells that changed, so each check first forces a full repaint by resizing.
+rows = [40]
+def press(key):
+    os.write(fd, key); pump(0.4)
+    rows[0] = 41 if rows[0] == 40 else 40
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows[0], 120, 0, 0))
+    os.kill(pid, signal.SIGWINCH)
+    mark = len(buf); pump(0.6)
+    return since(mark)
+assert b"last 30 days" in press(b"8"), "8 shows the last 30 days"
+assert b"last 7 days" in press(b"7"), "7 shows the last 7 days"
+shown = press(b"3")
+assert b"estimate per working folder" in shown and b"last 7 days" in shown, "3 is the Projects view, period kept"
+assert b"last 90 days" in press(b"9"), "9 shows the last 90 days"
 for k in (b"1", b"3", b"\t", b"j", b"?", b"x", b"?", b"\x1b"):  # a lone Esc closes help, not the screen
     os.write(fd, k)
     pump(0.2)
@@ -346,3 +361,38 @@ os.waitpid(pid, 0)
 assert buf.rfind(b"\x1b[?1000l") > buf.rfind(b"\x1b[?1000h"), "SIGTERM releases mouse reporting"
 PY
 pass "SIGTERM releases mouse modes"
+
+# --- refresh shows that it is working: a moving bright spinner, then a green tick
+printf '#!/bin/sh\nsleep 1.5\nexec "%s" "$@"\n' "$TMP/bin/ccusage" > "$TMP/bin/slow-ccusage"
+chmod +x "$TMP/bin/slow-ccusage"
+TOKENRATE_CCUSAGE="$TMP/bin/slow-ccusage" TOKENRATE_TTL=100000 python3 - "$SPEND" <<'PY' || fail "refresh feedback"
+import os, pty, select, struct, sys, termios, fcntl, time
+pid, fd = pty.fork()
+if pid == 0:
+    os.environ["TERM"] = "xterm-256color"
+    os.execv(sys.argv[1], [sys.argv[1]])
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
+buf = b""
+def pump(t):
+    global buf
+    end = time.time() + t
+    while time.time() < end:
+        r, _, _ = select.select([fd], [], [], 0.05)
+        if r:
+            try:
+                buf += os.read(fd, 65536)
+            except OSError:
+                return
+pump(1.0)
+assert "counting".encode() not in buf, "a fresh cache does not count on open"
+mark = len(buf); os.write(fd, b"r"); pump(1.0)
+busy = buf[mark:].decode("utf-8", "replace")
+assert "counting" in busy, "the header says it is counting"
+frames = {ch for ch in "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏" if ch in busy}
+assert len(frames) >= 3, f"the spinner moves ({frames})"
+assert "\x1b[38;5;208m" in busy or ";38;5;208m" in busy, "the spinner is bright, not dim"
+mark = len(buf); pump(3.5)
+assert "✓".encode() in buf[mark:], "a finished count shows a tick"
+os.write(fd, b"q"); pump(0.5)
+PY
+pass "refresh shows a moving bright spinner while counting, then a tick"

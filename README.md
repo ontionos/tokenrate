@@ -77,7 +77,7 @@ After that the counts are cached and counted again only when they are older than
 | `q`, `Esc` | close (Esc first closes the help) |
 | `r` | count again now |
 | `Tab`, `1`-`4` | Overview, Models, Projects, Days |
-| `7`, `3`, `9`, `d` | last 7, 30 or 90 days; `d` cycles |
+| `7`, `8`, `9`, `d` | last 7, 30 or 90 days; `d` cycles |
 | `↑` `↓` `j` `k` | scroll; `PgUp` `PgDn` `Space` `b` page; `g` `G` top and bottom |
 | `?` | help |
 

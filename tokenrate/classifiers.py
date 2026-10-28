@@ -49,8 +49,17 @@ def _day(value) -> dt.date | None:
         return None
 
 
-def usage(start: dt.date, end: dt.date) -> dict | None:
-    """{kind: calls, input_tokens, cost, unsure} for the days start..end, or None when there is nothing to show."""
+def _epoch(value) -> float | None:
+    try:
+        when = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (when if when.tzinfo else when.replace(tzinfo=dt.timezone.utc)).timestamp()
+
+
+def usage(start: dt.date, end: dt.date, since: float | None = None, until: float | None = None) -> dict | None:
+    """{kind: calls, input_tokens, cost, unsure} for the days start..end, or with `since` for the
+    timestamps since..until instead; None when there is nothing to show."""
     folder = settings.get("classifier_dir")
     if not folder:
         return None
@@ -63,7 +72,10 @@ def usage(start: dt.date, end: dt.date) -> dict | None:
         if rows is None:
             continue
         # The logs carry UTC timestamps; the window is local days, which is close enough here.
-        inside = [r for r in rows if start <= (_day(r.get("ts")) or dt.date.min) <= end]
+        if since is not None:
+            inside = [r for r in rows if since <= (_epoch(r.get("ts")) or 0) <= (until or float("inf"))]
+        else:
+            inside = [r for r in rows if start <= (_day(r.get("ts")) or dt.date.min) <= end]
         tokens = sum(_num(r.get("input_tokens")) for r in inside)
         if kind == "jev":
             cost = tokens * jev_price / 1e6

@@ -32,7 +32,7 @@ PRESS_LIGHT = 0.4  # seconds a pressed control stays lit when no release arrives
 
 
 class Dashboard:
-    def __init__(self, screen, view_index: int = 0, days: int = 30):
+    def __init__(self, screen, view_index: int = 0, days: int = 1):
         self.screen = screen
         self.view, self.days, self.scroll, self.help = view_index, days, 0, False
         self.payload, self.error = data.read_payload()
@@ -184,6 +184,7 @@ class Dashboard:
             if minute != self.minute:
                 self.minute = minute
                 self.dirty = True
+                self.summaries.pop(1, None)  # the 24-hour window moves on with the clock
                 if self.payload is not None and data.needs_refresh(self.payload) and not self.worker:
                     self.start_refresh()
             if self.pressed and time.time() - self.pressed_at > PRESS_LIGHT:
@@ -228,8 +229,8 @@ class Dashboard:
             self.view, self.scroll = (self.view - 1) % len(view.VIEWS), 0
         elif key in map(ord, "1234"):
             self.view, self.scroll = int(chr(key)) - 1, 0
-        elif key in map(ord, "789"):  # 7, 8, 9 side by side; 3 is the Projects view
-            self.days = {"7": 7, "8": 30, "9": 90}[chr(key)]
+        elif key in map(ord, view.RANGE_KEYS):  # 6 7 8 9 side by side; 3 is the Projects view
+            self.days = view.RANGES[view.RANGE_KEYS.index(chr(key))]
         elif key == ord("d"):
             self.days = view.RANGES[(view.RANGES.index(self.days) + 1) % len(view.RANGES)]
         elif key in (curses.KEY_DOWN, ord("j")):
@@ -307,7 +308,7 @@ def mouse_modes(on: bool):
         pass
 
 
-def run(view_index: int = 0, days: int = 30):
+def run(view_index: int = 0, days: int = 1):
     os.environ.setdefault("ESCDELAY", "25")
 
     def stop(signum, _frame):

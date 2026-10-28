@@ -11,15 +11,16 @@ import sys
 from . import __version__, data, settings, snapshot, view
 
 HELP = """\
-tokenrate - token and cost dashboard over the last 7, 30 or 90 days, from ccusage.
+tokenrate - token and cost dashboard over the last 24 hours or the last 7, 30 or 90 days, from ccusage.
 
   tokenrate                          open the dashboard in this terminal
                                      (q quits, r counts again, ? help; a mouse click works on
                                      views, periods, refresh and help, the wheel scrolls)
   tokenrate --refresh                count again now (one ccusage run), then exit
-  tokenrate --snapshot [--width N --height N --view NAME --days N --format ansi|plain|svg --theme dark|light]
-                                     print one frame without a terminal
-  tokenrate --json [--days N]        print the summary the views are drawn from
+  tokenrate --snapshot [--width N --height N --view NAME --days 24h|7|30|90 --format ansi|plain|svg
+             --theme dark|light]     print one frame without a terminal
+  tokenrate --json [--days 24h|7|30|90]
+                                     print the summary the views are drawn from (default 24h)
   tokenrate --install-ccusage        install the pinned ccusage into the data folder (needs network once)
   tokenrate --demo [...]             any of the above with made-up data instead of your logs
   tokenrate --paths                  print every folder and file tokenrate uses
@@ -28,6 +29,12 @@ tokenrate - token and cost dashboard over the last 7, 30 or 90 days, from ccusag
 
 Dollars are the public API price of the tokens: an estimate, not a bill.
 """
+
+
+def period(value: str) -> int:
+    """--days value: 24h (or 1) for the rolling 24 hours, else a number of days."""
+    v = value.strip().lower()
+    return 1 if v in ("24h", "1") else int(v.rstrip("d"))
 
 
 def main(argv=None) -> int:
@@ -48,10 +55,11 @@ def main(argv=None) -> int:
     p.add_argument("--width", type=int, default=120)
     p.add_argument("--height", type=int, default=48)
     p.add_argument("--view", default="overview", choices=[v.lower() for v in view.VIEWS])
-    p.add_argument("--days", type=int, default=30, choices=view.RANGES)
+    p.add_argument("--days", type=period, default=1, choices=view.RANGES, metavar="24h|7|30|90")
     p.add_argument("--format", default="ansi", choices=("ansi", "plain", "svg", "basic"))
     p.add_argument("--theme", default="dark", choices=("dark", "light"))
     p.add_argument("--today", help=argparse.SUPPRESS)
+    p.add_argument("--now", help=argparse.SUPPRESS)  # ISO time the 24-hour window ends at
     p.add_argument("--help-screen", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--scroll", type=int, default=0, help=argparse.SUPPRESS)
     a = p.parse_args(argv)
@@ -85,12 +93,18 @@ def main(argv=None) -> int:
         err = data.refresh()
         payload, error = data.read_payload()
         error = err or error
-    summary = data.summarize(payload, a.days, today=today)
+    if a.now:
+        now = dt.datetime.fromisoformat(a.now).astimezone().timestamp()
+    elif today and not a.demo:  # made-up data ends when it was "counted" (data.summarize_hours)
+        now = dt.datetime.combine(today, dt.time(23, 59, 59)).timestamp()
+    else:
+        now = None
+    summary = data.summarize(payload, a.days, today=today, now=now)
     if a.json:
         json.dump({"summary": summary, "error": error}, sys.stdout, indent=1, default=list)
         sys.stdout.write("\n")
         return 0
-    status = view.status_text(summary, False, None)
+    status = view.status_text(summary, False, None, now=payload["fetched_at"] if a.demo and payload else None)
     lines = snapshot.frame(summary, view_index, a.width, a.height, status, error, a.help_screen, a.scroll)
     if a.format == "plain":
         sys.stdout.write(snapshot.plain(lines))

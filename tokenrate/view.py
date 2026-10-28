@@ -16,7 +16,8 @@ from collections import defaultdict
 import time
 
 VIEWS = ("Overview", "Models", "Projects", "Days")
-RANGES = (7, 30, 90)
+RANGES = (1, 7, 30, 90)  # days; 1 is the rolling last 24 hours, drawn by the hour
+RANGE_KEYS = "6789"
 EIGHTHS = " ▏▎▍▌▋▊▉█"
 VBLOCKS = " ▁▂▃▄▅▆▇█"
 # Bars never touch their neighbours: a horizontal bar is the lower half of its row (▄, with ▖ for a
@@ -26,6 +27,25 @@ HBAR, HBAR_HALF = "▄", "▖"
 SPARK = "▂▃▄▅▆"  # the smallest non-zero bar stands above the empty baseline
 SPARK_EMPTY = "▁"
 SPARK_NOTE = "Small bars: each row to its own busiest period, coloured by its main model; a flat line is a quiet one."
+
+
+def range_label(days: int) -> str:
+    return "24h" if days == 1 else f"{days}d"
+
+
+def hourly(summary: dict) -> bool:
+    return summary.get("unit") == "hour"
+
+
+def unit(summary: dict) -> str:
+    return "hour" if hourly(summary) else "day"
+
+
+def slot_label(summary: dict, slot: dict, long: bool = True) -> str:
+    """A bar's period: "Wed 28 Oct" for a day, "Wed 14:00" (or "14:00") for an hour."""
+    if hourly(summary):
+        return f"{slot['weekday']} {slot['hour']}" if long else slot["hour"]
+    return nice_day(slot["date"], long)
 MODEL_STYLES = tuple(f"m{i}" for i in range(8))
 TOKEN_TYPES = (("cache_read", "cache read", "t0"), ("cache_write", "cache write", "t1"),
                ("input", "input", "t2"), ("output", "output", "t3"))
@@ -199,9 +219,9 @@ def spark_width(n_days: int, width: int) -> int:
     return max(0, 2 * len(spark_groups([0] * n_days, width)[0]) - 1)
 
 
-def spark_title(n_days: int, width: int) -> str:
+def spark_title(n_days: int, width: int, what: str = "day") -> str:
     per = spark_groups([0] * n_days, width)[1]
-    return "per day" if per == 1 else f"per {per} days"
+    return f"per {what}" if per == 1 else f"per {per} {what}s"
 
 
 def spark_axis(summary: dict, width: int) -> str:
@@ -211,8 +231,8 @@ def spark_axis(summary: dict, width: int) -> str:
     used = 2 * len(groups) - 1
     if not groups:
         return ""
-    first = days[max(0, len(days) - len(groups) * per)]["date"]
-    a, b = nice_day(first, False), nice_day(days[-1]["date"], False)
+    first = days[max(0, len(days) - len(groups) * per)]
+    a, b = slot_label(summary, first, False), slot_label(summary, days[-1], False)
     if used < len(a) + len(b) + 1:
         return b.rjust(used)
     return a + " " * (used - len(a) - len(b)) + b
@@ -342,7 +362,7 @@ def header(summary: dict, view: int, rng: int, width: int, status: str) -> list:
         tabs += [Click(f" {i + 1} {name} ", "tab_on" if i == view else "tab", ("view", i)), (" ", "")]
     pills = []
     for r in RANGES:
-        pills += [Click(f" {r}d ", "tab_on" if r == rng else "tab", ("days", r)), (" ", "")]
+        pills += [Click(f" {range_label(r)} ", "tab_on" if r == rng else "tab", ("days", r)), (" ", "")]
     if seg_len(tabs) + seg_len(pills) + 1 > width:
         tabs = [("◆ ", "title")] + [Click(f" {i + 1}{n[0]} ", "tab_on" if i == view else "tab", ("view", i))
                                     for i, n in enumerate(VIEWS)]
@@ -350,15 +370,21 @@ def header(summary: dict, view: int, rng: int, width: int, status: str) -> list:
     line1 = tabs + [(" " * gap, "")] + pills
 
     start, end = summary["start"], summary["end"]
-    period = f"{nice_day(start, False)} - {nice_day(end, False)}"
+    if hourly(summary):
+        a, b = dt.datetime.fromisoformat(start), dt.datetime.fromisoformat(end)
+        period = f"{a:%a %H:%M} - {b:%a %H:%M}"
+        span, active = "last 24 hours", f"{summary['active_hours']} active hours"
+    else:
+        period = f"{nice_day(start, False)} - {nice_day(end, False)}"
+        span, active = f"last {summary['days']} days", f"{summary['active_days']} active days"
     line2 = [(tok(summary["tokens"]), "big"), (" tokens   ", "dim"), (usd(summary["cost"]), "money"),
              (" API-equivalent estimate", "dim")]
-    tail = [("   ", ""), (period, "bold"), (f" · last {summary['days']} days · {summary['active_days']} active", "dim")]
+    tail = [("   ", ""), (period, "bold"), (f" · {span} · {active.split()[0]} active", "dim")]
     if seg_len(line2) + seg_len(tail) <= width:
         line2 += tail
         lines = [line1, line2]
     else:
-        lines = [line1, line2, [(period, "bold"), (f" · {summary['active_days']} active days", "dim")]]
+        lines = [line1, line2, [(period, "bold"), (f" · {span} · {active}", "dim")]]
     note = "subscription: not a bill"
     text, style, spin = status if isinstance(status, tuple) else (status, "status", "")
     button = Click(f" {spin} refreshing ", "busy_btn", ("refresh",)) if spin else Click(" ↻ refresh ", "tab", ("refresh",))
@@ -371,7 +397,7 @@ def header(summary: dict, view: int, rng: int, width: int, status: str) -> list:
 
 def footer(width: int) -> list:
     keys = (("q", "quit", None), ("r", "refresh", ("refresh",)), ("tab 1-4", "view", None),
-            ("7 8 9", "days", None), ("↑↓", "scroll", None), ("?", "help", ("help",)))
+            ("6-9", "period", None), ("↑↓", "scroll", None), ("?", "help", ("help",)))
     line = []
     for k, label, action in keys:
         item = [Click(f" {k} ", "key", action) if action else (f" {k} ", "key"), (f" {label}  ", "dim")]
@@ -386,7 +412,7 @@ HELP = [
     [("  q / Esc      ", "key"), ("close", "")],
     [("  r            ", "key"), ("count again now (ccusage runs once, a few seconds)", "")],
     [("  tab / 1-4    ", "key"), ("Overview, Models, Projects, Days", "")],
-    [("  7 / 8 / 9    ", "key"), ("last 7, 30 or 90 days   (d cycles)", "")],
+    [("  6 7 8 9      ", "key"), ("last 24 hours (by the hour), 7, 30 or 90 days   (d cycles)", "")],
     [("  ↑ ↓ j k      ", "key"), ("scroll; PgUp PgDn space b page; g G top/bottom", "")],
     [("  mouse        ", "key"), ("click a view, a period or refresh; the wheel scrolls", "")],
     [],
@@ -396,6 +422,8 @@ HELP = [
     [("  The subscription is billed separately and does not change with these numbers.", "")],
     [("  Cache reads are context re-read on every turn: cheap per token, most of the volume.", "")],
     [("  Today is partial. Data refreshes when it is older than a few minutes or on r.", "")],
+    [("  24h: the 24 clock hours ending with this one, from the logs' timestamps; an hour's", "")],
+    [("  dollars are its share of that day's ccusage cost per model, so day totals match.", "")],
 ]
 
 
@@ -403,7 +431,7 @@ HELP = [
 
 
 def daily_chart(summary: dict, width: int, height: int = 8) -> list:
-    """Vertical bars of cost per day, each split by model in the models' colours, peaks labelled."""
+    """Vertical bars of cost per day (or hour), each split by model in the models' colours, peaks labelled."""
     days = summary["daily"]
     styles = model_styles(summary)
     axis_w = 7
@@ -470,7 +498,42 @@ def daily_chart(summary: dict, width: int, height: int = 8) -> list:
         lines.append(row)
     lines.append([(" " * (axis_w - 2) + " └", "axis"), ("─" * (len(cols) * col), "axis")])
 
-    # Weekday initials (weekends dimmed) when each day has its own column, then dates under Mondays.
+    if hourly(summary):
+        lines += hour_axis(cols, col, per, axis_w)
+    else:
+        lines += day_axis(cols, col, per, axis_w)
+    in_use = [m["name"] for m in summary["models"] if m["cost"] > 0]
+    lines.append([(" " * axis_w, "")] + model_legend(summary, width - axis_w, in_use))
+    return lines
+
+
+def hour_axis(cols: list, col: int, per: int, axis_w: int) -> list:
+    """Hours under the bars (every hour when a column has room for two digits, else every third),
+    then the weekday under the first bar and under midnight."""
+    hours, days = [" "] * (len(cols) * col), [" "] * (len(cols) * col)
+    every = 1 if col >= 3 else 3  # two digits and a space need three cells
+    for i, (_v, _s, h) in enumerate(cols):
+        hour = int(h["hour"][:2])
+        x = i * col
+        if (hour if per == 1 else i) % every == 0:
+            text = h["hour"][:2]
+            if x + len(text) <= len(hours) and all(ch == " " for ch in hours[max(0, x - 1):x + len(text) + 1]):
+                hours[x:x + len(text)] = list(text)
+        if i == 0 or hour == 0 or (per > 1 and hour < per):
+            text = f"{h['weekday']} {h['date'][8:]}"
+            text = text[:len(days) - x]
+            if all(ch == " " for ch in days[max(0, x - 1):x + len(text) + 1]):
+                days[x:x + len(text)] = list(text)
+    out = [[(" " * axis_w, ""), ("".join(hours).rstrip(), "axis")]]
+    row = [(" " * axis_w, ""), ("".join(days).rstrip(), "axis")]
+    if per > 1:
+        row.append((f"   each bar = {per} hours", "dim"))
+    return out + [row]
+
+
+def day_axis(cols: list, col: int, per: int, axis_w: int) -> list:
+    """Weekday initials (weekends dimmed) when each day has its own column, then dates under Mondays."""
+    lines = []
     wd_row, date_row = [(" " * axis_w, "")], [" "] * (len(cols) * col)
     for i, (_v, _s, d) in enumerate(cols):
         day = dt.date.fromisoformat(d["date"])
@@ -489,8 +552,6 @@ def daily_chart(summary: dict, width: int, height: int = 8) -> list:
     if per > 1:
         dates.append((f"   each bar = {per} days", "dim"))
     lines.append(dates)
-    in_use = [m["name"] for m in summary["models"] if m["cost"] > 0]
-    lines.append([(" " * axis_w, "")] + model_legend(summary, width - axis_w, in_use))
     return lines
 
 
@@ -513,11 +574,14 @@ def chart_caption(summary: dict) -> list:
     busiest = summary["busiest"]
     if busiest:
         b = busiest[0]
-        out += [("peak ", "dim"), (nice_day(b["date"]), "bold"), (" " + usd(b["cost"]), "peak")]
-    out += [(" · average active day ", "dim"), (usd(summary["avg_active_day_cost"]), "bold")]
+        out += [("peak ", "dim"), (slot_label(summary, b), "bold"), (" " + usd(b["cost"]), "peak")]
+    if hourly(summary):
+        out += [(" · average active hour ", "dim"), (usd(summary["avg_active_hour_cost"]), "bold")]
+    else:
+        out += [(" · average active day ", "dim"), (usd(summary["avg_active_day_cost"]), "bold")]
     today = summary["daily"][-1] if summary["daily"] else None
     if today:
-        out += [(" · today so far ", "dim"), (usd(today["cost"]), "bold")]
+        out += [(f" · {'this hour' if hourly(summary) else 'today'} so far ", "dim"), (usd(today["cost"]), "bold")]
     return out
 
 
@@ -585,17 +649,18 @@ def projects_block(summary: dict, width: int, limit: int = 8) -> list:
 
 def busiest_block(summary: dict, width: int, limit: int = 6) -> list:
     styles = model_styles(summary)
-    lines = [section("Busiest days")]
+    lines = [section(f"Busiest {unit(summary)}s")]
     busiest = summary["busiest"][:limit]
     if not busiest:
         return lines + [[("  none in this window", "dim")]]
     peak = busiest[0]["cost"] or 1
     bar_w = max(4, min(36, width - 46))
-    by_date = {d["date"]: d for d in summary["daily"]}
+    key = "start" if hourly(summary) else "date"
+    by_slot = {d[key]: d for d in summary["daily"]}
     for b in busiest:
-        weekend = dt.date.fromisoformat(b["date"]).weekday() >= 5
-        models = by_date.get(b["date"], {}).get("models", {})
-        lines.append([(nice_day(b["date"]), "weekend" if weekend else "bold"), ("  ", "")] +
+        weekend = dt.date.fromisoformat(b["date"]).weekday() >= 5 and not hourly(summary)
+        models = by_slot.get(b[key], {}).get("models", {})
+        lines.append([(clip(slot_label(summary, b), 10), "weekend" if weekend else "bold"), ("  ", "")] +
                      hbar_stacked(stack_parts(models, styles), b["cost"] / peak, bar_w) +
                      [(f" {usd(b['cost']):>7}", "money"), (f" {tok(b['tokens']):>6}", "dim"), ("  ", ""),
                       (clip(b["top_model"] or "-", 10), styles.get(b["top_model"], "dim"))])
@@ -613,11 +678,14 @@ def change_lines(summary: dict, width: int) -> list:
 
 def change_line(summary: dict) -> list:
     d = summary["delta"]
-    last, prev = d["last7"], d["prev7"]
-    out = [("WHAT CHANGED", "head"), ("  last 7 days ", "dim"), (usd(last["cost"]), "money")]
+    if hourly(summary):
+        last, prev, span, before = d["last24"], d["prev24"], "last 24 hours", "the 24 before"
+    else:
+        last, prev, span, before = d["last7"], d["prev7"], "last 7 days", "the 7 before"
+    out = [("WHAT CHANGED", "head"), (f"  {span} ", "dim"), (usd(last["cost"]), "money")]
     if not prev or not prev["cost"]:
-        return out + [("  (no earlier week to compare)", "dim")]
-    out += [(" vs ", "dim"), (usd(prev["cost"]), "bold"), (" the 7 before  ", "dim")]
+        return out + [(f"  (nothing in {before} to compare)", "dim")]
+    out += [(" vs ", "dim"), (usd(prev["cost"]), "bold"), (f" {before}  ", "dim")]
     out += _delta(last["cost"], prev["cost"], "cost")
     if prev["tokens"]:
         out += [("  ", "")] + _delta(last["tokens"], prev["tokens"], "tokens")
@@ -673,7 +741,7 @@ def overview(summary: dict, width: int, room: int | None = None) -> list:
 
 
 def overview_lines(summary: dict, width: int, chart: int, n_models: int, n_projects: int, n_busiest: int) -> list:
-    lines = [section("Cost per day", "API-equivalent estimate, each bar split by model")]
+    lines = [section(f"Cost per {unit(summary)}", "API-equivalent estimate, each bar split by model")]
     lines += daily_chart(summary, width, chart)
     lines += [chart_caption(summary), []]
     models = lambda w: models_block(summary, w, limit=n_models)
@@ -698,7 +766,7 @@ def overview_lines(summary: dict, width: int, chart: int, n_models: int, n_proje
 def models_view(summary: dict, width: int) -> list:
     styles = model_styles(summary)
     lines = models_block(summary, width, limit=len(summary["models"]) or 1) + [[]]
-    lines.append(section("Per model", "tokens by type and the estimate per day"))
+    lines.append(section("Per model", f"tokens by type and the estimate per {unit(summary)}"))
     if not summary["models"]:
         return lines
     name_w = max(10, min(18, max(len(m["name"]) for m in summary["models"]) + 1))
@@ -707,7 +775,7 @@ def models_view(summary: dict, width: int) -> list:
     if spark_width(n, spark_w) < 7:
         spark_w = 0
     head = (clip("model", name_w) + f"{'cache rd':>8}{'cache wr':>9}{'input':>8}{'output':>8}{'est.':>9}  " +
-            (spark_title(n, spark_w) if spark_w else ""))
+            (spark_title(n, spark_w, unit(summary)) if spark_w else ""))
     lines.append([(head, "dim")])
     for m in summary["models"]:
         row = [(clip(m["name"], name_w), styles[m["name"]]),
@@ -736,7 +804,7 @@ def projects_view(summary: dict, width: int) -> list:
     top = projects[0]["cost"] or 1
     styles = model_styles(summary)
     head = clip("project", name_w) + " " * bar_w + f"{'share':>6}{'est.':>9}{'tokens':>7}"
-    lines.append([(head + ("  " + spark_title(n, spark_w) if spark_w else ""), "dim")])
+    lines.append([(head + ("  " + spark_title(n, spark_w, unit(summary)) if spark_w else ""), "dim")])
     for p in projects:
         row = [(clip(p["name"], name_w - 1) + " ", "bold")] + \
               hbar_stacked(stack_parts(p.get("models") or {}, styles), p["cost"] / top, bar_w) + \
@@ -746,8 +814,10 @@ def projects_view(summary: dict, width: int) -> list:
         lines.append(row)
     if spark_w:
         lines.append([(" " * (name_w + bar_w + 24), ""), (spark_axis(summary, spark_w), "axis")])
-    lines += [[], model_legend(summary, width),
-              [("Bars are split by model; Claude Code by working folder per day, Codex by session folder on its last day.", "dim")]]
+    how = ("Bars are split by model; Claude Code and Codex by working folder per hour, from the logs."
+           if hourly(summary) else
+           "Bars are split by model; Claude Code by working folder per day, Codex by session folder on its last day.")
+    lines += [[], model_legend(summary, width), [(how, "dim")]]
     if spark_w:
         lines.append([(SPARK_NOTE, "dim")])
     return lines
@@ -755,21 +825,22 @@ def projects_view(summary: dict, width: int) -> list:
 
 def days_view(summary: dict, width: int, height: int) -> list:
     styles = model_styles(summary)
-    lines = [section("Cost per day", "API-equivalent estimate, each bar split by model")]
+    what = unit(summary)
+    lines = [section(f"Cost per {what}", "API-equivalent estimate, each bar split by model")]
     lines += daily_chart(summary, width, max(6, min(14, height // 3)))
     lines += [chart_caption(summary), []] + change_lines(summary, width) + [[]]
-    lines.append(section("Every day", "newest first"))
+    lines.append(section(f"Every {what}", "newest first"))
     peak = summary["peak_cost"] or 1
     bar_w = max(6, width - 58)
-    lines.append([(f"{'day':<12}{'':<{bar_w}}{'est.':>9}{'tokens':>8}{'cache':>7}  main model", "dim")])
+    lines.append([(f"{what:<12}{'':<{bar_w}}{'est.':>9}{'tokens':>8}{'cache':>7}  main model", "dim")])
     for d in reversed(summary["daily"]):
-        weekend = dt.date.fromisoformat(d["date"]).weekday() >= 5
+        weekend = dt.date.fromisoformat(d["date"]).weekday() >= 5 and not hourly(summary)
         cache = d["cache_read"] / d["tokens"] if d["tokens"] else 0
         if not d["cost"] and not d["tokens"]:
-            lines.append([(clip(nice_day(d["date"]), 12), "weekend" if weekend else "dim"), ("·" * bar_w, "track"),
+            lines.append([(clip(slot_label(summary, d), 12), "weekend" if weekend else "dim"), ("·" * bar_w, "track"),
                           (f"{'-':>9}", "dim")])
             continue
-        lines.append([(clip(nice_day(d["date"]), 12), "weekend" if weekend else "bold")] +
+        lines.append([(clip(slot_label(summary, d), 12), "weekend" if weekend else "bold")] +
                      hbar_stacked(stack_parts(d["models"], styles), d["cost"] / peak, bar_w) +
                      [(f"{usd(d['cost']):>9}", "money"), (f"{tok(d['tokens']):>8}", ""),
                       (f"{pct(cache):>7}", "dim"), ("  ", ""),
@@ -783,7 +854,7 @@ def body(summary: dict, view: int, width: int, height: int, room: int | None = N
         first = summary.get("history_first")
         return [[], [("No token usage in this window.", "bold")],
                 [(f"History starts {first}." if first else "ccusage found no Claude Code or Codex logs yet.", "dim")],
-                [("Press 9 for 90 days or r to count again.", "dim")]]
+                [("Press 8 or 9 for 30 or 90 days, or r to count again.", "dim")]]
     if view == 1:
         return models_view(summary, width)
     if view == 2:

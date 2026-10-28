@@ -1,4 +1,4 @@
-# tokenrate: token and cost dashboard (last 7, 30 or 90 days) in a Herdr overlay.
+# tokenrate: token and cost dashboard (last 24 hours, or 7, 30 or 90 days) in a Herdr overlay.
 # The pane runs bin/tokenrate from this folder. No network after the one-time
 # ccusage install, no background process: the overlay closes when the
 # dashboard quits (q). README.md covers install, use and uninstall.
@@ -13,7 +13,7 @@ id = "tokenrate"
 name = "tokenrate"
 version = "0.1.0"
 min_herdr_version = "0.9.0"
-description = "Token and cost dashboard over the last 7, 30 or 90 days, from ccusage (API-equivalent estimate)."
+description = "Token and cost dashboard over the last 24 hours or 7, 30 or 90 days, from ccusage (API-equivalent estimate)."
 platforms = ["macos", "linux"]
 
 # On install and update: put the pinned ccusage in tokenrate's own data folder
